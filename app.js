@@ -16,17 +16,49 @@ class VaultAnalyzer {
             this.experiments = [];
             this.tasks = [];
 
-            // Use File System Access API to read directory
-            const dirHandle = await window.showDirectoryPicker();
-            await this.processVaultRoot(dirHandle);
-            this.analyzeData();
-            this.renderDashboard();
+            // Check if running in Electron
+            if (window.electronAPI) {
+                // Use Electron API to select vault
+                const vaultPath = await window.electronAPI.selectVault();
+                if (vaultPath) {
+                    await this.processVaultRootElectron(vaultPath);
+                    this.analyzeData();
+                    this.renderDashboard();
 
-            // Save to localStorage
-            this.saveToLocalStorage();
+                    // Save to localStorage
+                    this.saveToLocalStorage();
+                    this.currentVaultPath = vaultPath;
+                }
+            } else {
+                // Fallback to File System Access API for web version
+                const dirHandle = await window.showDirectoryPicker();
+                await this.processVaultRoot(dirHandle);
+                this.analyzeData();
+                this.renderDashboard();
+
+                // Save to localStorage
+                this.saveToLocalStorage();
+            }
         } catch (error) {
             if (error.name !== 'AbortError') {
                 this.showError('Error loading vault: ' + error.message);
+            }
+        }
+    }
+
+    async reloadVault() {
+        if (this.currentVaultPath && window.electronAPI) {
+            try {
+                this.projects = [];
+                this.experiments = [];
+                this.tasks = [];
+
+                await this.processVaultRootElectron(this.currentVaultPath);
+                this.analyzeData();
+                this.renderDashboard();
+                this.saveToLocalStorage();
+            } catch (error) {
+                this.showError('Error reloading vault: ' + error.message);
             }
         }
     }
@@ -60,6 +92,78 @@ class VaultAnalyzer {
                 await this.processProjectFolder(entry, entry.name);
             }
         }
+    }
+
+    async processVaultRootElectron(vaultPath) {
+        // Read vault directory using Electron API
+        const entries = await window.electronAPI.readVault(vaultPath);
+
+        for (const entry of entries) {
+            if (entry.type === 'directory' && !entry.name.startsWith('.')) {
+                await this.processProjectFolderElectron(entry.path, entry.name);
+            }
+        }
+    }
+
+    async processProjectFolderElectron(projectPath, projectName) {
+        const project = {
+            name: projectName,
+            experiments: [],
+            totalTasks: 0,
+            completedTasks: 0,
+            properties: {}
+        };
+
+        const entries = await window.electronAPI.readVault(projectPath);
+
+        let experimentsFolder = null;
+        let projectFile = null;
+
+        for (const entry of entries) {
+            if (entry.type === 'directory' && entry.name === 'experiments') {
+                experimentsFolder = entry;
+            } else if (entry.type === 'file' && entry.name.endsWith('.md')) {
+                projectFile = entry;
+            }
+        }
+
+        // Parse project file if found
+        if (projectFile) {
+            const frontmatterMatch = projectFile.content.match(/^---\n([\s\S]*?)\n---/);
+            if (frontmatterMatch) {
+                try {
+                    const properties = jsyaml.load(frontmatterMatch[1]) || {};
+                    if (properties.type === 'project') {
+                        project.properties = properties;
+                    }
+                } catch (e) {
+                    console.warn('Failed to parse project frontmatter for', projectName, e);
+                }
+            }
+        }
+
+        if (!experimentsFolder) {
+            this.projects.push(project);
+            return;
+        }
+
+        // Process experiments folder
+        const experimentEntries = await window.electronAPI.readVault(experimentsFolder.path);
+
+        for (const entry of experimentEntries) {
+            if (entry.type === 'file' && entry.name.endsWith('.md')) {
+                const experiment = this.parseMarkdownFile(entry.content, entry.name, projectName);
+
+                if (experiment) {
+                    project.experiments.push(experiment);
+                    this.experiments.push(experiment);
+                    project.totalTasks += experiment.tasks.length;
+                    project.completedTasks += experiment.tasks.filter(t => t.completed).length;
+                }
+            }
+        }
+
+        this.projects.push(project);
     }
 
     async processProjectFolder(projectHandle, projectName) {
@@ -785,7 +889,33 @@ class VaultAnalyzer {
 const analyzer = new VaultAnalyzer();
 
 // Auto-load from localStorage on page load
-window.addEventListener('DOMContentLoaded', () => {
+window.addEventListener('DOMContentLoaded', async () => {
+    // Set up file watcher if in Electron
+    if (window.electronAPI) {
+        window.electronAPI.onVaultChange(() => {
+            console.log('Vault changed, reloading...');
+            analyzer.reloadVault();
+        });
+
+        // Try to load last opened vault
+        const storedPath = await window.electronAPI.getStoredVaultPath();
+        if (storedPath) {
+            try {
+                analyzer.currentVaultPath = storedPath;
+                await analyzer.processVaultRootElectron(storedPath);
+                analyzer.analyzeData();
+                analyzer.renderDashboard();
+                const fileInfo = document.getElementById('fileInfo');
+                fileInfo.textContent = `✓ Auto-loaded vault from ${storedPath}`;
+                fileInfo.style.color = 'var(--success)';
+                return;
+            } catch (error) {
+                console.warn('Failed to auto-load vault:', error);
+            }
+        }
+    }
+
+    // Fallback to localStorage
     if (analyzer.loadFromLocalStorage()) {
         analyzer.analyzeData();
         analyzer.renderDashboard();
@@ -810,8 +940,8 @@ document.getElementById('loadVaultBtn').addEventListener('click', async () => {
     }
 });
 
-// Check for File System Access API support
-if (!('showDirectoryPicker' in window)) {
+// Check for File System Access API support (only for web version)
+if (!window.electronAPI && !('showDirectoryPicker' in window)) {
     document.getElementById('loadVaultBtn').disabled = true;
     document.getElementById('fileInfo').textContent = '⚠️ Your browser does not support folder selection. Please use Chrome, Edge, or another Chromium-based browser.';
     document.getElementById('fileInfo').style.color = 'var(--warning)';

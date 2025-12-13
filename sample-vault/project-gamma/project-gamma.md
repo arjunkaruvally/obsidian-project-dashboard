@@ -3,7 +3,7 @@ type: project
 status: done
 priority: low
 milestone: Q4 2025 Completion
-milestone_date: 2025-12-20
+milestone_date: 2025-12-26
 clients: [Internal Team]
 ---
 
