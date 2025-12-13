@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Obsidian Vault Dashboard</title>
+    <meta name="description" content="Visualize tasks and experiments from your Obsidian vault">
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        <!-- Navigation -->
+        <nav class="nav-bar">
+            <div class="nav-brand">📊 Obsidian Vault Dashboard</div>
+            <div class="nav-links">
+                <a href="index.html" class="nav-link active">Dashboard</a>
+                <a href="kanban.html" class="nav-link">Kanban Board</a>
+            </div>
+        </nav>
+
+        <header>
+            <h1>📊 Obsidian Vault Dashboard</h1>
+            <p class="subtitle">Visualize your projects, experiments, and tasks</p>
+        </header>
+
+        <div class="upload-section">
+            <div class="upload-card">
+                <div class="upload-icon">📁</div>
+                <h2>Load Your Vault</h2>
+                <p>Select your Obsidian vault folder to analyze</p>
+                <button id="loadVaultBtn" class="primary-btn">
+                    <span>Choose Folder</span>
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path d="M10 4V16M4 10H16" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                    </svg>
+                </button>
+                <p class="file-info" id="fileInfo"></p>
+            </div>
+        </div>
+
+        <div id="dashboard" class="dashboard hidden">
+            <!-- Statistics Cards -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon">📂</div>
+                    <div class="stat-content">
+                        <h3 id="totalProjects">0</h3>
+                        <p>Projects</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">🧪</div>
+                    <div class="stat-content">
+                        <h3 id="totalExperiments">0/0</h3> <!-- not done/done -->
+                        <p>Experiments</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">✓</div>
+                    <div class="stat-content">
+                        <h3 id="totalTasks">0</h3>
+                        <p>Tasks</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">📈</div>
+                    <div class="stat-content">
+                        <h3 id="completionRate">0%</h3>
+                        <p>Completion Rate</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Visualizations -->
+            <div class="charts-grid">
+
+                <div class="chart-card">
+                    <h2>Project Status Distribution</h2>
+                    <div class="chart-container">
+                        <canvas id="projectStatusChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-card">
+                    <h2>Experiment Status Distribution</h2>
+                    <div class="chart-container">
+                        <canvas id="statusChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-card">
+                    <h2>Tasks Overview</h2>
+                    <div class="chart-container">
+                        <canvas id="tasksChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-card">
+                    <h2>Task Completion by Project</h2>
+                    <div class="chart-container">
+                        <canvas id="completionChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-card">
+                    <h2>Deadline Timeline</h2>
+                    <div class="chart-container">
+                        <canvas id="deadlineChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-card full-width">
+                    <h2>📅 Task Calendar</h2>
+                    <div id="calendar"></div>
+                </div>
+
+                <div class="chart-card">
+                    <h2>⚠️ Overdue Tasks</h2>
+                    <div class="backlog-list" id="backlogList"></div>
+                </div>
+
+                <div class="chart-card">
+                    <h2>Project Details</h2>
+                    <div class="project-list" id="projectList"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="errorMessage" class="error-message hidden"></div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>

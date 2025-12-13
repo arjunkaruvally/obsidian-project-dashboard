@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kanban Board - Obsidian Vault Dashboard</title>
+    <meta name="description" content="Kanban board view for managing tasks from your Obsidian vault">
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="kanban.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        <!-- Navigation -->
+        <nav class="nav-bar">
+            <div class="nav-brand">📊 Obsidian Vault Dashboard</div>
+            <div class="nav-links">
+                <a href="index.html" class="nav-link">Dashboard</a>
+                <a href="kanban.html" class="nav-link active">Kanban Board</a>
+            </div>
+        </nav>
+
+        <header>
+            <h1>📋 Kanban Board</h1>
+            <p class="subtitle">Organize and manage your tasks visually</p>
+        </header>
+
+        <div class="upload-section">
+            <div class="upload-card">
+                <div class="upload-icon">📁</div>
+                <h2>Load Your Vault</h2>
+                <p>Select your Obsidian vault folder to view tasks</p>
+                <button id="loadVaultBtn" class="primary-btn">
+                    <span>Choose Folder</span>
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path d="M10 4V16M4 10H16" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                    </svg>
+                </button>
+                <p class="file-info" id="fileInfo"></p>
+            </div>
+        </div>
+
+        <div id="kanbanBoard" class="kanban-board hidden">
+            <!-- Filter Section -->
+            <div class="filter-section">
+                <label for="projectFilter" class="filter-label">
+                    <span class="filter-icon">🔍</span>
+                    Filter by Project:
+                </label>
+                <select id="projectFilter" class="filter-select">
+                    <option value="all">All Projects</option>
+                </select>
+            </div>
+
+            <div class="kanban-columns">
+                <div class="kanban-column" data-status="todo">
+                    <div class="column-header">
+                        <h2>📝 To Do</h2>
+                        <span class="task-count" id="todoCount">0</span>
+                    </div>
+                    <div class="column-content" id="todoColumn"></div>
+                </div>
+
+                <div class="kanban-column" data-status="in-progress">
+                    <div class="column-header">
+                        <h2>🚀 In Progress</h2>
+                        <span class="task-count" id="inProgressCount">0</span>
+                    </div>
+                    <div class="column-content" id="inProgressColumn"></div>
+                </div>
+
+                <div class="kanban-column" data-status="done">
+                    <div class="column-header">
+                        <h2>✅ Done</h2>
+                        <span class="task-count" id="doneCount">0</span>
+                    </div>
+                    <div class="column-content" id="doneColumn"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="errorMessage" class="error-message hidden"></div>
+    </div>
+
+    <script src="kanban.js"></script>
+</body>
+
+</html>
