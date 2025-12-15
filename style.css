@@ -80,6 +80,38 @@ body {
     color: white;
 }
 
+/* Vault Button */
+.vault-btn {
+    position: fixed;
+    top: 1.5rem;
+    right: 2rem;
+    width: 3rem;
+    height: 3rem;
+    border-radius: 0.75rem;
+    background: var(--bg-card);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--border-color);
+    font-size: 1.5rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+}
+
+.vault-btn:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--accent-primary);
+    transform: scale(1.1);
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+}
+
+.vault-btn:active {
+    transform: scale(0.95);
+}
+
+
 /* Header */
 header {
     text-align: center;
@@ -101,50 +133,7 @@ header h1 {
     color: var(--text-secondary);
     font-size: 1.125rem;
     font-weight: 400;
-}
-
-/* Upload Section */
-.upload-section {
-    display: flex;
-    justify-content: center;
-    margin-bottom: 3rem;
-    animation: fadeIn 0.8s ease-out;
-}
-
-.upload-card {
-    background: var(--bg-card);
-    backdrop-filter: blur(10px);
-    border: 1px solid var(--border-color);
-    border-radius: 1.5rem;
-    padding: 3rem;
-    text-align: center;
-    max-width: 500px;
-    width: 100%;
-    transition: all 0.3s ease;
-}
-
-.upload-card:hover {
-    background: var(--bg-card-hover);
-    border-color: var(--accent-primary);
-    transform: translateY(-4px);
-    box-shadow: 0 20px 40px rgba(99, 102, 241, 0.2);
-}
-
-.upload-icon {
-    font-size: 4rem;
-    margin-bottom: 1rem;
-    animation: float 3s ease-in-out infinite;
-}
-
-.upload-card h2 {
-    font-size: 1.75rem;
     margin-bottom: 0.5rem;
-    font-weight: 600;
-}
-
-.upload-card p {
-    color: var(--text-secondary);
-    margin-bottom: 1.5rem;
 }
 
 .primary-btn {
@@ -173,10 +162,10 @@ header h1 {
 }
 
 .file-info {
-    margin-top: 1rem;
     font-size: 0.875rem;
     color: var(--success);
-    min-height: 1.5rem;
+    min-height: 1.25rem;
+    margin-top: 0.5rem;
 }
 
 /* Dashboard */
@@ -277,7 +266,7 @@ header h1 {
 
 /* Project List */
 .project-list {
-    max-height: 300px;
+    max-height: 500px;
     overflow-y: auto;
 }
 
@@ -442,7 +431,7 @@ header h1 {
 
 /* Backlog List */
 .backlog-list {
-    max-height: 300px;
+    max-height: 500px;
     overflow-y: auto;
 }
 

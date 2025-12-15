@@ -27,25 +27,15 @@
             </div>
         </nav>
 
+        <button id="loadVaultBtn" class="vault-btn" title="Open Vault (Cmd/Ctrl+O)">
+            📁
+        </button>
+
         <header>
             <h1>📊 Obsidian Vault Dashboard</h1>
             <p class="subtitle">Visualize your projects, experiments, and tasks</p>
+            <p class="file-info" id="fileInfo"></p>
         </header>
-
-        <div class="upload-section">
-            <div class="upload-card">
-                <div class="upload-icon">📁</div>
-                <h2>Load Your Vault</h2>
-                <p>Select your Obsidian vault folder to analyze</p>
-                <button id="loadVaultBtn" class="primary-btn">
-                    <span>Choose Folder</span>
-                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                        <path d="M10 4V16M4 10H16" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-                    </svg>
-                </button>
-                <p class="file-info" id="fileInfo"></p>
-            </div>
-        </div>
 
         <div id="dashboard" class="dashboard hidden">
             <!-- Statistics Cards -->

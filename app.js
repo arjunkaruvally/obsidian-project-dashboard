@@ -821,7 +821,19 @@ class VaultAnalyzer {
         const container = document.getElementById('projectList');
         container.innerHTML = '';
 
-        this.projects.forEach(project => {
+        // Define priority order
+        const priorityOrder = { 'urgent': 0, 'high': 1, 'medium': 2, 'low': 3 };
+
+        // Sort projects by priority
+        const sortedProjects = [...this.projects].sort((a, b) => {
+            const priorityA = (a.properties.priority || 'low').toLowerCase();
+            const priorityB = (b.properties.priority || 'low').toLowerCase();
+            const orderA = priorityOrder[priorityA] !== undefined ? priorityOrder[priorityA] : 999;
+            const orderB = priorityOrder[priorityB] !== undefined ? priorityOrder[priorityB] : 999;
+            return orderA - orderB;
+        });
+
+        sortedProjects.forEach(project => {
             const completionRate = project.totalTasks > 0
                 ? Math.round((project.completedTasks / project.totalTasks) * 100)
                 : 0;
