@@ -1,0 +1,21 @@
+[package]
+name = "obsidian-vault-dashboard"
+version = "1.0.0"
+description = "Desktop dashboard for visualizing Obsidian vault tasks and experiments"
+authors = ["Arjun Karuvally"]
+license = "MIT"
+repository = ""
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "1.5", features = [] }
+
+[dependencies]
+tauri = { version = "1.5", features = [ "dialog-all", "fs-read-dir"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+notify = "6.1"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

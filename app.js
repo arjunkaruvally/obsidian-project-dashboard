@@ -16,12 +16,13 @@ class VaultAnalyzer {
             this.experiments = [];
             this.tasks = [];
 
-            // Check if running in Electron
-            if (window.electronAPI) {
-                // Use Electron API to select vault
-                const vaultPath = await window.electronAPI.selectVault();
+            // Check if running in Tauri
+            if (window.__TAURI__) {
+                const { invoke } = window.__TAURI__.tauri;
+                // Use Tauri API to select vault
+                const vaultPath = await invoke('select_vault');
                 if (vaultPath) {
-                    await this.processVaultRootElectron(vaultPath);
+                    await this.processVaultRootTauri(vaultPath);
                     this.analyzeData();
                     this.renderDashboard();
 
@@ -47,13 +48,13 @@ class VaultAnalyzer {
     }
 
     async reloadVault() {
-        if (this.currentVaultPath && window.electronAPI) {
+        if (this.currentVaultPath && window.__TAURI__) {
             try {
                 this.projects = [];
                 this.experiments = [];
                 this.tasks = [];
 
-                await this.processVaultRootElectron(this.currentVaultPath);
+                await this.processVaultRootTauri(this.currentVaultPath);
                 this.analyzeData();
                 this.renderDashboard();
                 this.saveToLocalStorage();
@@ -94,18 +95,19 @@ class VaultAnalyzer {
         }
     }
 
-    async processVaultRootElectron(vaultPath) {
-        // Read vault directory using Electron API
-        const entries = await window.electronAPI.readVault(vaultPath);
+    async processVaultRootTauri(vaultPath) {
+        // Read vault directory using Tauri API
+        const { invoke } = window.__TAURI__.tauri;
+        const entries = await invoke('read_vault_dir', { path: vaultPath });
 
         for (const entry of entries) {
             if (entry.type === 'directory' && !entry.name.startsWith('.')) {
-                await this.processProjectFolderElectron(entry.path, entry.name);
+                await this.processProjectFolderTauri(entry.path, entry.name);
             }
         }
     }
 
-    async processProjectFolderElectron(projectPath, projectName) {
+    async processProjectFolderTauri(projectPath, projectName) {
         const project = {
             name: projectName,
             experiments: [],
@@ -114,7 +116,8 @@ class VaultAnalyzer {
             properties: {}
         };
 
-        const entries = await window.electronAPI.readVault(projectPath);
+        const { invoke } = window.__TAURI__.tauri;
+        const entries = await invoke('read_vault_dir', { path: projectPath });
 
         let experimentsFolder = null;
         let projectFile = null;
@@ -148,7 +151,7 @@ class VaultAnalyzer {
         }
 
         // Process experiments folder
-        const experimentEntries = await window.electronAPI.readVault(experimentsFolder.path);
+        const experimentEntries = await invoke('read_vault_dir', { path: experimentsFolder.path });
 
         for (const entry of experimentEntries) {
             if (entry.type === 'file' && entry.name.endsWith('.md')) {
@@ -902,28 +905,35 @@ const analyzer = new VaultAnalyzer();
 
 // Auto-load from localStorage on page load
 window.addEventListener('DOMContentLoaded', async () => {
-    // Set up file watcher if in Electron
-    if (window.electronAPI) {
-        window.electronAPI.onVaultChange(() => {
+    // Set up file watcher if in Tauri
+    if (window.__TAURI__) {
+        const { listen } = window.__TAURI__.event;
+        const { invoke } = window.__TAURI__.tauri;
+
+        listen('vault-changed', () => {
             console.log('Vault changed, reloading...');
             analyzer.reloadVault();
         });
 
         // Try to load last opened vault
-        const storedPath = await window.electronAPI.getStoredVaultPath();
-        if (storedPath) {
-            try {
-                analyzer.currentVaultPath = storedPath;
-                await analyzer.processVaultRootElectron(storedPath);
-                analyzer.analyzeData();
-                analyzer.renderDashboard();
-                const fileInfo = document.getElementById('fileInfo');
-                fileInfo.textContent = `✓ Auto-loaded vault from ${storedPath}`;
-                fileInfo.style.color = 'var(--success)';
-                return;
-            } catch (error) {
-                console.warn('Failed to auto-load vault:', error);
+        try {
+            const storedPath = await invoke('get_stored_vault_path');
+            if (storedPath) {
+                try {
+                    analyzer.currentVaultPath = storedPath;
+                    await analyzer.processVaultRootTauri(storedPath);
+                    analyzer.analyzeData();
+                    analyzer.renderDashboard();
+                    const fileInfo = document.getElementById('fileInfo');
+                    fileInfo.textContent = `✓ Auto-loaded vault from ${storedPath}`;
+                    fileInfo.style.color = 'var(--success)';
+                    return;
+                } catch (error) {
+                    console.warn('Failed to auto-load vault:', error);
+                }
             }
+        } catch (error) {
+            console.warn('No stored vault path:', error);
         }
     }
 
@@ -953,8 +963,18 @@ document.getElementById('loadVaultBtn').addEventListener('click', async () => {
 });
 
 // Check for File System Access API support (only for web version)
-if (!window.electronAPI && !('showDirectoryPicker' in window)) {
+// Don't show error if running in Tauri (which has its own folder picker)
+console.log('Environment check:', {
+    hasTauri: !!window.__TAURI__,
+    hasShowDirectoryPicker: !!window.showDirectoryPicker,
+    userAgent: navigator.userAgent
+});
+
+if (!window.__TAURI__ && !('showDirectoryPicker' in window)) {
     document.getElementById('loadVaultBtn').disabled = true;
     document.getElementById('fileInfo').textContent = '⚠️ Your browser does not support folder selection. Please use Chrome, Edge, or another Chromium-based browser.';
     document.getElementById('fileInfo').style.color = 'var(--warning)';
+} else if (window.__TAURI__) {
+    console.log('Running in Tauri!');
+    document.getElementById('fileInfo').textContent = 'Click the folder icon to select your vault';
 }

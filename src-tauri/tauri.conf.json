@@ -1,0 +1,51 @@
+{
+    "build": {
+        "beforeDevCommand": "",
+        "beforeBuildCommand": "",
+        "devPath": "../",
+        "distDir": "../",
+        "withGlobalTauri": true
+    },
+    "package": {
+        "productName": "Obsidian Vault Dashboard",
+        "version": "1.0.0"
+    },
+    "tauri": {
+        "allowlist": {
+            "all": false,
+            "dialog": {
+                "all": true,
+                "open": true,
+                "save": true,
+                "message": true,
+                "ask": true,
+                "confirm": true
+            },
+            "fs": {
+                "readDir": true,
+                "scope": [
+                    "**"
+                ]
+            }
+        },
+        "bundle": {
+            "active": true,
+            "category": "Productivity",
+            "identifier": "com.obsidian.vault.dashboard",
+            "targets": "all"
+        },
+        "security": {
+            "csp": null
+        },
+        "windows": [
+            {
+                "fullscreen": false,
+                "height": 900,
+                "resizable": true,
+                "title": "Obsidian Vault Dashboard",
+                "width": 1400,
+                "center": true
+            }
+        ]
+    }
+}

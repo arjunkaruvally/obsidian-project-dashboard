@@ -1,5 +1,9 @@
 node_modules/
 dist/
-out/
+dist-ssr/
+
+# Tauri build artifacts
+src-tauri/target/
+src-tauri/WixTools/
 *.log
 .DS_Store
