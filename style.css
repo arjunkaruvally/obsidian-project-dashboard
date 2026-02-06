@@ -391,20 +391,20 @@ header h1 {
     font-size: 0.75rem !important;
 }
 
-.fc-event.event-urgent {
-    background-color: var(--error) !important;
+.fc-event.event-overdue {
+    background-color: var(--error) !important; /* Red for past due incomplete tasks */
 }
 
 .fc-event.event-soon {
-    background-color: var(--warning) !important;
+    background-color: var(--warning) !important; /* Yellow for tasks nearing deadline */
 }
 
 .fc-event.event-normal {
-    background-color: var(--success) !important;
+    background-color: var(--success) !important; /* Green for normal tasks */
 }
 
-.fc-event.event-overdue {
-    background-color: var(--text-secondary) !important;
+.fc-event.event-completed {
+    background-color: var(--text-secondary) !important; /* Gray for all completed tasks */
     opacity: 0.7;
 }
 

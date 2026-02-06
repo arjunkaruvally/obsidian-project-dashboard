@@ -167,6 +167,60 @@ fn start_watching(app_handle: tauri::AppHandle, vault_path: String, state: &taur
     }
 }
 
+#[tauri::command]
+fn save_planner_data(app_handle: tauri::AppHandle, data: String) -> Result<(), String> {
+    let app_dir = app_handle
+        .path_resolver()
+        .app_data_dir()
+        .ok_or("Could not get app data directory")?;
+    
+    fs::create_dir_all(&app_dir).map_err(|e| format!("Failed to create app dir: {}", e))?;
+    
+    let planner_file = app_dir.join("planner_data.json");
+    fs::write(&planner_file, data).map_err(|e| format!("Failed to save planner data: {}", e))?;
+    
+    Ok(())
+}
+
+#[tauri::command]
+fn load_planner_data(app_handle: tauri::AppHandle) -> Result<Option<String>, String> {
+    let app_dir = app_handle
+        .path_resolver()
+        .app_data_dir()
+        .ok_or("Could not get app data directory")?;
+    
+    let planner_file = app_dir.join("planner_data.json");
+    
+    if planner_file.exists() {
+        let content = fs::read_to_string(&planner_file)
+            .map_err(|e| format!("Failed to read planner data: {}", e))?;
+        Ok(Some(content))
+    } else {
+        Ok(None)
+    }
+}
+
+#[tauri::command]
+fn fetch_ical_url(url: String) -> Result<String, String> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+    
+    let response = client
+        .get(&url)
+        .header("User-Agent", "ObsidianVaultDashboard/1.0")
+        .send()
+        .map_err(|e| format!("Failed to fetch URL: {}", e))?;
+    
+    if !response.status().is_success() {
+        return Err(format!("HTTP error: {}", response.status()));
+    }
+    
+    response.text()
+        .map_err(|e| format!("Failed to read response: {}", e))
+}
+
 fn main() {
     tauri::Builder::default()
         .manage(AppState {
@@ -176,7 +230,10 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             select_vault,
             read_vault_dir,
-            get_stored_vault_path
+            get_stored_vault_path,
+            save_planner_data,
+            load_planner_data,
+            fetch_ical_url
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

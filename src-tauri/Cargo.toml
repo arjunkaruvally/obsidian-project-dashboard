@@ -11,10 +11,11 @@ edition = "2021"
 tauri-build = { version = "1.5", features = [] }
 
 [dependencies]
-tauri = { version = "1.5", features = [ "dialog-all", "fs-read-dir"] }
+tauri = { version = "1.5", features = ["dialog-all", "fs-read-dir"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 notify = "6.1"
+reqwest = { version = "0.11", features = ["blocking", "rustls-tls"] }
 
 [features]
 default = ["custom-protocol"]

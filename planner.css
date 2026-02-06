@@ -1,0 +1,769 @@
+/* Planner Page Styles */
+
+.planner-container {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.planner-layout {
+    display: flex;
+    flex: 1;
+    gap: 1.5rem;
+    padding: 1.5rem;
+    padding-top: 0.5rem;
+}
+
+/* Sidebar */
+.planner-sidebar {
+    width: 320px;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    flex-shrink: 0;
+}
+
+.sidebar-section {
+    background: var(--bg-card);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--border-color);
+    border-radius: 1rem;
+    padding: 1rem;
+}
+
+.sidebar-section h3 {
+    font-size: 0.9rem;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+    color: var(--text-primary);
+}
+
+/* Section Header with Add Button */
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.section-header h3 {
+    margin-bottom: 0;
+}
+
+.add-entry-btn {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: none;
+    background: var(--accent-primary);
+    color: white;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.add-entry-btn:hover {
+    background: var(--accent-secondary);
+    transform: scale(1.1);
+}
+
+/* Add Entry Form */
+.add-entry-form {
+    background: rgba(99, 102, 241, 0.1);
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+    margin-bottom: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.add-entry-form.hidden {
+    display: none;
+}
+
+.entry-input {
+    width: 100%;
+    padding: 0.5rem;
+    background: rgba(148, 163, 184, 0.1);
+    border: 1px solid var(--border-color);
+    border-radius: 0.4rem;
+    color: var(--text-primary);
+    font-size: 0.8rem;
+}
+
+.entry-input:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+}
+
+.duration-inputs {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.duration-inputs span {
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+.duration-input {
+    width: 50px;
+    padding: 0.5rem;
+    background: rgba(148, 163, 184, 0.1);
+    border: 1px solid var(--border-color);
+    border-radius: 0.4rem;
+    color: var(--text-primary);
+    font-size: 0.8rem;
+    text-align: center;
+}
+
+.duration-input:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+}
+
+.entry-form-buttons {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.entry-btn {
+    flex: 1;
+    padding: 0.4rem;
+    border: none;
+    border-radius: 0.4rem;
+    cursor: pointer;
+    font-size: 0.75rem;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.entry-btn.save {
+    background: var(--success);
+    color: white;
+}
+
+.entry-btn.save:hover {
+    opacity: 0.9;
+}
+
+.entry-btn.cancel {
+    background: rgba(148, 163, 184, 0.2);
+    color: var(--text-secondary);
+}
+
+.entry-btn.cancel:hover {
+    background: rgba(148, 163, 184, 0.4);
+}
+
+.empty-message {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    text-align: center;
+    padding: 1rem;
+}
+
+/* Project List */
+.project-list {
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.project-item-sidebar {
+    padding: 0.6rem 0.8rem;
+    margin-bottom: 0.4rem;
+    background: rgba(99, 102, 241, 0.1);
+    border-left: 3px solid var(--accent-primary);
+    border-radius: 0.4rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 0.85rem;
+}
+
+.project-item-sidebar:hover {
+    background: rgba(99, 102, 241, 0.2);
+    transform: translateX(4px);
+}
+
+.project-item-sidebar.selected {
+    background: rgba(99, 102, 241, 0.3);
+    border-left-color: var(--accent-secondary);
+}
+
+.project-item-sidebar.dragging {
+    opacity: 0.5;
+}
+
+/* Task List */
+.selected-project {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    padding: 0.5rem;
+    background: rgba(99, 102, 241, 0.1);
+    border-radius: 0.4rem;
+    margin-bottom: 0.5rem;
+    display: none;
+}
+
+.selected-project.active {
+    display: block;
+}
+
+.task-list {
+    max-height: 250px;
+    overflow-y: auto;
+}
+
+.task-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    margin-bottom: 0.4rem;
+    background: rgba(148, 163, 184, 0.1);
+    border-radius: 0.4rem;
+    font-size: 0.8rem;
+    cursor: grab;
+}
+
+.task-item:hover {
+    background: rgba(148, 163, 184, 0.2);
+}
+
+.task-item.completed {
+    opacity: 0.6;
+    text-decoration: line-through;
+}
+
+.task-checkbox {
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    border: 2px solid var(--accent-primary);
+    flex-shrink: 0;
+}
+
+.task-checkbox.checked {
+    background: var(--accent-primary);
+}
+
+.task-text {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Time tracking button */
+.task-timer {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.task-time {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    font-family: monospace;
+}
+
+.timer-btn {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    transition: all 0.2s ease;
+}
+
+.timer-btn.play {
+    background: var(--success);
+    color: white;
+}
+
+.timer-btn.pause {
+    background: var(--warning);
+    color: white;
+}
+
+.timer-btn:hover {
+    transform: scale(1.1);
+}
+
+/* Time Log */
+.time-log {
+    max-height: 150px;
+    overflow-y: auto;
+}
+
+.time-entry {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0.5rem;
+    margin-bottom: 0.3rem;
+    background: rgba(16, 185, 129, 0.1);
+    border-radius: 0.3rem;
+    font-size: 0.75rem;
+}
+
+.time-entry-task {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.time-entry-duration {
+    font-family: monospace;
+    color: var(--success);
+}
+
+.time-entry-delete {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+    padding: 0 0.25rem;
+    opacity: 0.5;
+    transition: all 0.2s ease;
+}
+
+.time-entry-delete:hover {
+    color: var(--error);
+    opacity: 1;
+}
+
+.total-time {
+    margin-top: 0.75rem;
+    padding: 0.5rem;
+    background: rgba(99, 102, 241, 0.2);
+    border-radius: 0.4rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-align: center;
+}
+
+.total-time span {
+    font-family: monospace;
+    color: var(--accent-primary);
+}
+
+/* Google Calendar Settings */
+.gcal-settings {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.gcal-input {
+    width: 100%;
+    padding: 0.5rem;
+    background: rgba(148, 163, 184, 0.1);
+    border: 1px solid var(--border-color);
+    border-radius: 0.4rem;
+    color: var(--text-primary);
+    font-size: 0.75rem;
+}
+
+.gcal-input:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+}
+
+.gcal-buttons {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.gcal-btn {
+    flex: 1;
+    padding: 0.4rem 0.75rem;
+    border: none;
+    border-radius: 0.4rem;
+    cursor: pointer;
+    font-size: 0.75rem;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.gcal-btn.save {
+    background: var(--accent-primary);
+    color: white;
+}
+
+.gcal-btn.save:hover {
+    background: var(--accent-secondary);
+}
+
+.gcal-btn.toggle {
+    background: rgba(16, 185, 129, 0.2);
+    color: var(--success);
+    border: 1px solid var(--success);
+}
+
+.gcal-btn.toggle:hover:not(:disabled) {
+    background: rgba(16, 185, 129, 0.4);
+}
+
+.gcal-btn.toggle.active {
+    background: var(--success);
+    color: white;
+}
+
+.gcal-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.gcal-status {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    margin: 0;
+}
+
+.gcal-status.success {
+    color: var(--success);
+}
+
+.gcal-status.error {
+    color: var(--error);
+}
+
+/* Working Hours Settings */
+.working-hours-settings {
+    padding: 0.5rem;
+}
+
+.time-range {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.time-range input[type="time"] {
+    padding: 0.4rem;
+    background: rgba(30, 41, 59, 0.8);
+    border: 1px solid var(--border-color);
+    border-radius: 0.25rem;
+    color: var(--text-primary);
+    font-size: 0.85rem;
+}
+
+.time-range span {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+}
+
+/* Overtime sub-values */
+.stat-overtime {
+    font-size: 0.7rem;
+    color: #f59e0b;
+    margin-top: 0.15rem;
+}
+
+/* Google Calendar Events */
+.fc-event.gcal-event {
+    background-color: rgba(66, 133, 244, 0.7) !important;
+    border: none !important;
+    border-left: 3px solid #4285f4 !important;
+    border-radius: 4px !important;
+    font-size: 0.75rem !important;
+}
+
+/* Calendar Summary Bar */
+.calendar-summary {
+    display: flex;
+    gap: 1rem;
+    padding: 0.75rem 1rem;
+    background: rgba(30, 41, 59, 0.5);
+    border-radius: 0.75rem;
+    margin-bottom: 1rem;
+    border: 1px solid var(--border-color);
+}
+
+.summary-stat {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0.5rem;
+    background: rgba(148, 163, 184, 0.1);
+    border-radius: 0.5rem;
+    border-left: 3px solid var(--text-secondary);
+}
+
+.summary-stat.gcal {
+    border-left-color: #4285f4;
+}
+
+.summary-stat.tracked {
+    border-left-color: var(--accent-primary);
+}
+
+.summary-stat.available {
+    border-left-color: var(--success);
+}
+
+.stat-label {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.25rem;
+}
+
+.stat-value {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.summary-stat.gcal .stat-value {
+    color: #4285f4;
+}
+
+.summary-stat.planned {
+    border-left-color: #f59e0b;
+}
+
+.summary-stat.planned .stat-value {
+    color: #f59e0b;
+}
+
+.summary-stat.tracked .stat-value {
+    color: var(--accent-primary);
+}
+
+.summary-stat.available .stat-value {
+    color: var(--success);
+}
+
+.planner-main {
+    flex: 1;
+    background: var(--bg-card);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--border-color);
+    border-radius: 1rem;
+    padding: 1rem;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+#calendar {
+    flex: 1;
+    min-height: 0;
+}
+
+/* Calendar Event Styling */
+.fc-event.project-event {
+    border: none !important;
+    border-radius: 6px !important;
+    padding: 4px 8px !important;
+    font-size: 0.8rem !important;
+    cursor: pointer;
+}
+
+.fc-event.project-event .fc-event-title {
+    font-weight: 500;
+}
+
+.fc-event.priority-urgent {
+    background-color: rgba(239, 68, 68, 0.9) !important;
+}
+
+.fc-event.priority-high {
+    background-color: rgba(249, 115, 22, 0.9) !important;
+}
+
+.fc-event.priority-medium {
+    background-color: rgba(245, 158, 11, 0.9) !important;
+}
+
+.fc-event.priority-low {
+    background-color: rgba(16, 185, 129, 0.9) !important;
+}
+
+/* Tracked Events Overlay */
+.fc-event.tracked-event {
+    background-color: rgba(99, 102, 241, 0.5) !important;
+    border: 2px dashed rgba(99, 102, 241, 0.8) !important;
+    border-radius: 4px !important;
+    font-size: 0.7rem !important;
+    opacity: 0.8;
+}
+
+.fc-event.tracked-event .fc-event-title {
+    font-style: italic;
+}
+
+/* Modal Delete Button */
+.modal-delete-btn {
+    background: rgba(239, 68, 68, 0.2);
+    border: 1px solid rgba(239, 68, 68, 0.5);
+    color: #ef4444;
+    padding: 0.4rem 0.75rem;
+    border-radius: 0.4rem;
+    cursor: pointer;
+    font-size: 0.8rem;
+    margin-right: 0.5rem;
+    transition: all 0.2s ease;
+}
+
+.modal-delete-btn:hover {
+    background: rgba(239, 68, 68, 0.4);
+}
+
+/* Tracked Event Info in Modal */
+.tracked-event-info {
+    padding: 1rem;
+    background: rgba(99, 102, 241, 0.1);
+    border-radius: 0.5rem;
+}
+
+.tracked-event-info p {
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.tracked-event-info p:last-child {
+    margin-bottom: 0;
+}
+
+/* Modal */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.modal.hidden {
+    display: none;
+}
+
+.modal-content {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 1rem;
+    width: 90%;
+    max-width: 500px;
+    max-height: 80vh;
+    overflow: hidden;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.modal-header h3 {
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    line-height: 1;
+}
+
+.modal-close:hover {
+    color: var(--text-primary);
+}
+
+.modal-body {
+    padding: 1rem;
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.event-tasks {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.event-task-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    background: rgba(99, 102, 241, 0.1);
+    border-radius: 0.5rem;
+}
+
+.event-task-item .task-text {
+    flex: 1;
+}
+
+/* Time Grid specific styles */
+.fc-timegrid-slot {
+    height: 2.5em !important;
+}
+
+.fc-timegrid-event {
+    border-radius: 6px !important;
+}
+
+/* Scrollbar */
+.task-list::-webkit-scrollbar,
+.project-list::-webkit-scrollbar,
+.time-log::-webkit-scrollbar {
+    width: 6px;
+}
+
+.task-list::-webkit-scrollbar-track,
+.project-list::-webkit-scrollbar-track,
+.time-log::-webkit-scrollbar-track {
+    background: rgba(148, 163, 184, 0.1);
+    border-radius: 3px;
+}
+
+.task-list::-webkit-scrollbar-thumb,
+.project-list::-webkit-scrollbar-thumb,
+.time-log::-webkit-scrollbar-thumb {
+    background: var(--accent-primary);
+    border-radius: 3px;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+    .planner-layout {
+        flex-direction: column;
+    }
+
+    .planner-sidebar {
+        width: 100%;
+        flex-direction: row;
+        flex-wrap: wrap;
+    }
+
+    .sidebar-section {
+        flex: 1;
+        min-width: 250px;
+    }
+}

@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Planner - Obsidian Vault Dashboard</title>
+    <meta name="description" content="Plan your projects and track time on tasks">
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="planner.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="tauri-init.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js"></script>
+</head>
+
+<body>
+    <div class="planner-container">
+        <!-- Navigation -->
+        <nav class="nav-bar">
+            <div class="nav-brand">📊 Obsidian Vault Dashboard</div>
+            <div class="nav-links">
+                <a href="index.html" class="nav-link">Dashboard</a>
+                <a href="planner.html" class="nav-link active">Planner</a>
+            </div>
+        </nav>
+
+        <div class="planner-layout">
+            <!-- Sidebar -->
+            <aside class="planner-sidebar">
+                <div class="sidebar-section">
+                    <h3>📂 Projects</h3>
+                    <div class="project-list" id="projectList">
+                        <p class="empty-message">Load vault from Dashboard first</p>
+                    </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <h3>📋 Tasks</h3>
+                    <div id="selectedProject" class="selected-project"></div>
+                    <div class="task-list" id="taskList">
+                        <p class="empty-message">Select a project</p>
+                    </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <div class="section-header">
+                        <h3>⏱️ Time Log</h3>
+                        <button id="addTimeEntryBtn" class="add-entry-btn" title="Add custom entry">+</button>
+                    </div>
+                    <div id="addTimeEntryForm" class="add-entry-form hidden">
+                        <input type="text" id="customTaskName" placeholder="Task description" class="entry-input">
+                        <div class="duration-inputs">
+                            <input type="number" id="customHours" placeholder="H" min="0" max="23"
+                                class="duration-input">
+                            <span>:</span>
+                            <input type="number" id="customMinutes" placeholder="M" min="0" max="59"
+                                class="duration-input">
+                        </div>
+                        <div class="entry-form-buttons">
+                            <button id="saveCustomEntry" class="entry-btn save">Add</button>
+                            <button id="cancelCustomEntry" class="entry-btn cancel">Cancel</button>
+                        </div>
+                    </div>
+                    <div class="time-log" id="timeLog">
+                        <p class="empty-message">No time entries today</p>
+                    </div>
+                    <div class="total-time" id="totalTime">
+                        Total: <span>00:00:00</span>
+                    </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <h3>📅 Google Calendar</h3>
+                    <div class="gcal-settings">
+                        <input type="text" id="gcalUrl" placeholder="Paste iCal URL here..." class="gcal-input">
+                        <div class="gcal-buttons">
+                            <button id="gcalSave" class="gcal-btn save">Save</button>
+                            <button id="gcalToggle" class="gcal-btn toggle" disabled>Show</button>
+                        </div>
+                        <p class="gcal-status" id="gcalStatus"></p>
+                    </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <h3>⏰ Working Hours</h3>
+                    <div class="working-hours-settings">
+                        <div class="time-range">
+                            <input type="time" id="workStartTime" value="10:00">
+                            <span>to</span>
+                            <input type="time" id="workEndTime" value="18:00">
+                        </div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Calendar -->
+            <main class="planner-main">
+                <div class="calendar-summary" id="calendarSummary">
+                    <div class="summary-stat">
+                        <span class="stat-label">📆 Total Hours</span>
+                        <span class="stat-value" id="statTotalHours">0h</span>
+                    </div>
+                    <div class="summary-stat gcal">
+                        <span class="stat-label">📅 Google Calendar</span>
+                        <span class="stat-value" id="statGcalHours">0h</span>
+                        <span class="stat-overtime" id="statGcalOvertime"></span>
+                    </div>
+                    <div class="summary-stat planned">
+                        <span class="stat-label">📝 Planned</span>
+                        <span class="stat-value" id="statPlannedHours">0h</span>
+                        <span class="stat-overtime" id="statPlannedOvertime"></span>
+                    </div>
+                    <div class="summary-stat tracked">
+                        <span class="stat-label">⏱️ Time Tracked</span>
+                        <span class="stat-value" id="statTrackedHours">0h</span>
+                        <span class="stat-overtime" id="statTrackedOvertime"></span>
+                    </div>
+                    <div class="summary-stat available">
+                        <span class="stat-label" id="statAvailableLabel">✅ Available</span>
+                        <span class="stat-value" id="statAvailableHours">0h</span>
+                    </div>
+                </div>
+                <div id="calendar"></div>
+            </main>
+        </div>
+
+        <!-- Task Modal -->
+        <div id="taskModal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 id="modalTitle">Event Tasks</h3>
+                    <button class="modal-close" id="modalClose">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="event-tasks" id="eventTasks"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="planner.js"></script>
+</body>
+
+</html>

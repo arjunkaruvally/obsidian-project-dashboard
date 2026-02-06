@@ -268,7 +268,8 @@ class VaultAnalyzer {
                 deadline: null,
                 daysUntilDeadline: null,
                 urgency: 'none',
-                doneDate: null
+                doneDate: null,
+                startedDate: null
             };
 
             let cleanText = taskText;
@@ -280,11 +281,32 @@ class VaultAnalyzer {
                 cleanText = cleanText.replace(/@(?:due|deadline)\([^)]+\)/, '').trim();
             }
 
+            // Extract deadline from emoji syntax: 📅 YYYY-MM-DD
+            const emojiDueMatch = cleanText.match(/📅\s+(\d{4}-\d{2}-\d{2})/);
+            if (emojiDueMatch) {
+                task.deadline = emojiDueMatch[1];
+                cleanText = cleanText.replace(/📅\s+\d{4}-\d{2}-\d{2}/, '').trim();
+            }
+
             // Extract done date from inline syntax: @done(YYYY-MM-DD)
             const doneDateMatch = cleanText.match(/@done\((\d{4}-\d{2}-\d{2})\)/);
             if (doneDateMatch) {
                 task.doneDate = doneDateMatch[1];
                 cleanText = cleanText.replace(/@done\([^)]+\)/, '').trim();
+            }
+
+            // Extract done date from emoji syntax: ✅ YYYY-MM-DD
+            const emojiDoneMatch = cleanText.match(/✅\s+(\d{4}-\d{2}-\d{2})/);
+            if (emojiDoneMatch) {
+                task.doneDate = emojiDoneMatch[1];
+                cleanText = cleanText.replace(/✅\s+\d{4}-\d{2}-\d{2}/, '').trim();
+            }
+
+            // Extract started date from emoji syntax: 🛫 YYYY-MM-DD
+            const emojiStartedMatch = cleanText.match(/🛫\s+(\d{4}-\d{2}-\d{2})/);
+            if (emojiStartedMatch) {
+                task.startedDate = emojiStartedMatch[1];
+                cleanText = cleanText.replace(/🛫\s+\d{4}-\d{2}-\d{2}/, '').trim();
             }
 
             task.text = cleanText;
@@ -297,7 +319,7 @@ class VaultAnalyzer {
                 deadlineDate.setHours(0, 0, 0, 0);
 
                 const diffTime = deadlineDate - today;
-                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
 
                 task.daysUntilDeadline = diffDays;
 
@@ -366,10 +388,45 @@ class VaultAnalyzer {
             this.charts.completion.destroy();
         }
 
-        const projectNames = this.projects.map(p => p.name);
-        const completionRates = this.projects.map(p =>
+        // Define priority order and color mapping
+        const priorityOrder = { 'urgent': 0, 'high': 1, 'medium': 2, 'low': 3 };
+        const priorityColors = {
+            'urgent': 'rgba(239, 68, 68, 0.8)',      // Red
+            'high': 'rgba(249, 115, 22, 0.8)',       // Orange
+            'medium': 'rgba(245, 158, 11, 0.8)',     // Yellow
+            'low': 'rgba(16, 185, 129, 0.8)'         // Green
+        };
+        const priorityBorderColors = {
+            'urgent': 'rgba(239, 68, 68, 1)',
+            'high': 'rgba(249, 115, 22, 1)',
+            'medium': 'rgba(245, 158, 11, 1)',
+            'low': 'rgba(16, 185, 129, 1)'
+        };
+
+        // Sort projects by priority
+        const sortedProjects = [...this.projects].sort((a, b) => {
+            const priorityA = (a.properties.priority || 'low').toLowerCase();
+            const priorityB = (b.properties.priority || 'low').toLowerCase();
+            const orderA = priorityOrder[priorityA] !== undefined ? priorityOrder[priorityA] : 999;
+            const orderB = priorityOrder[priorityB] !== undefined ? priorityOrder[priorityB] : 999;
+            return orderA - orderB;
+        });
+
+        const projectNames = sortedProjects.map(p => p.name);
+        const completionRates = sortedProjects.map(p =>
             p.totalTasks > 0 ? Math.round((p.completedTasks / p.totalTasks) * 100) : 0
         );
+
+        // Assign colors based on priority
+        const backgroundColors = sortedProjects.map(p => {
+            const priority = (p.properties.priority || 'low').toLowerCase();
+            return priorityColors[priority] || 'rgba(99, 102, 241, 0.8)';
+        });
+
+        const borderColors = sortedProjects.map(p => {
+            const priority = (p.properties.priority || 'low').toLowerCase();
+            return priorityBorderColors[priority] || 'rgba(99, 102, 241, 1)';
+        });
 
         this.charts.completion = new Chart(ctx, {
             type: 'bar',
@@ -378,8 +435,8 @@ class VaultAnalyzer {
                 datasets: [{
                     label: 'Completion %',
                     data: completionRates,
-                    backgroundColor: 'rgba(99, 102, 241, 0.8)',
-                    borderColor: 'rgba(99, 102, 241, 1)',
+                    backgroundColor: backgroundColors,
+                    borderColor: borderColors,
                     borderWidth: 2,
                     borderRadius: 8,
                 }]
@@ -397,7 +454,14 @@ class VaultAnalyzer {
                         titleColor: '#f8fafc',
                         bodyColor: '#94a3b8',
                         callbacks: {
-                            label: (context) => 'Completion: ' + context.parsed.y + '%'
+                            label: (context) => {
+                                const project = sortedProjects[context.dataIndex];
+                                const priority = (project.properties.priority || 'low').toUpperCase();
+                                return [
+                                    'Completion: ' + context.parsed.y + '%',
+                                    'Priority: ' + priority
+                                ];
+                            }
                         }
                     }
                 },
@@ -626,11 +690,19 @@ class VaultAnalyzer {
         const topTasks = tasksWithDeadlines.slice(0, 10);
 
         const labels = topTasks.map(t => t.text.substring(0, 30) + (t.text.length > 30 ? '...' : ''));
-        const data = topTasks.map(t => t.daysUntilDeadline);
+        // Use minimum bar length for visualization (0.5 days) while keeping actual data
+        const data = topTasks.map(t => {
+            const days = t.daysUntilDeadline;
+            // For tasks with 0 or very small positive values, show minimum bar of 0.5
+            if (days >= 0 && days < 0.5) return 0.5;
+            return days;
+        });
         const colors = topTasks.map(t => {
-            if (t.urgency === 'overdue') return 'rgba(148, 163, 184, 0.8)';
-            if (t.urgency === 'urgent') return 'rgba(239, 68, 68, 0.8)';
-            if (t.urgency === 'soon') return 'rgba(245, 158, 11, 0.8)';
+            // Red for overdue tasks
+            if (t.urgency === 'overdue') return 'rgba(239, 68, 68, 0.8)';
+            // Yellow for tasks nearing deadline (urgent or soon)
+            if (t.urgency === 'urgent' || t.urgency === 'soon') return 'rgba(245, 158, 11, 0.8)';
+            // Green for normal tasks
             return 'rgba(16, 185, 129, 0.8)';
         });
 
@@ -669,7 +741,8 @@ class VaultAnalyzer {
                             label: (context) => {
                                 const index = context.dataIndex;
                                 const task = topTasks[index];
-                                const days = context.parsed.x;
+                                // Use actual days from task, not the modified bar value
+                                const days = task.daysUntilDeadline;
 
                                 let timeText = '';
                                 if (days < 0) timeText = `Overdue by ${Math.abs(days)} days`;
@@ -692,7 +765,9 @@ class VaultAnalyzer {
                         ticks: {
                             color: '#94a3b8',
                             callback: (value) => value + 'd'
-                        }
+                        },
+                        // Ensure 0-day tasks are visible by setting min to lowest value or -1
+                        min: Math.min(...data, -1)
                     },
                     y: {
                         grid: { display: false },
@@ -744,15 +819,26 @@ class VaultAnalyzer {
             .filter(t => t.deadline)
             .map(t => {
                 let className = 'event-normal';
-                if (t.urgency === 'overdue') className = 'event-overdue';
-                else if (t.urgency === 'urgent') className = 'event-urgent';
-                else if (t.urgency === 'soon') className = 'event-soon';
+
+                // Completed tasks are always gray
+                if (t.completed) {
+                    className = 'event-completed';
+                }
+                // For incomplete tasks, apply urgency-based colors
+                else if (t.urgency === 'overdue') {
+                    className = 'event-overdue';  // Red for past due
+                } else if (t.urgency === 'urgent' || t.urgency === 'soon') {
+                    className = 'event-soon';  // Yellow for nearing deadline
+                } else {
+                    className = 'event-normal';  // Green for normal tasks
+                }
 
                 return {
                     title: (t.completed ? '✓ ' : '') + t.text,
                     start: t.deadline,
                     allDay: true,
                     className: className,
+                    order: t.completed ? 1 : 0,  // Incomplete tasks (0) show before completed (1)
                     extendedProps: {
                         type: 'task',
                         project: t.project,
@@ -771,6 +857,7 @@ class VaultAnalyzer {
                     start: p.properties.milestone_date,
                     allDay: true,
                     className: 'event-milestone',
+                    order: 2,  // Milestones show after tasks
                     extendedProps: {
                         type: 'milestone',
                         project: p.name,
@@ -792,6 +879,7 @@ class VaultAnalyzer {
                 right: 'dayGridMonth,dayGridWeek'
             },
             events: events,
+            eventOrder: 'order,title',  // Sort by order first (incomplete before completed), then by title
             eventClick: (info) => {
                 const props = info.event.extendedProps;
                 if (props.type === 'milestone') {
@@ -876,8 +964,19 @@ class VaultAnalyzer {
                 }
             }
 
+            // Get priority and corresponding color
+            const priority = (project.properties.priority || 'low').toLowerCase();
+            const priorityColors = {
+                'urgent': '#ef4444',      // Red
+                'high': '#f97316',        // Orange
+                'medium': '#f59e0b',      // Yellow
+                'low': '#10b981'          // Green
+            };
+            const borderColor = priorityColors[priority] || '#6366f1';
+
             const projectItem = document.createElement('div');
             projectItem.className = 'project-item';
+            projectItem.style.borderLeftColor = borderColor;
             projectItem.innerHTML = `
                 <h3>${project.name}</h3>
                 <p>${project.experiments.length} experiments • ${project.completedTasks}/${project.totalTasks} tasks completed</p>
