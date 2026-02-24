@@ -253,11 +253,38 @@
     background: var(--accent-primary);
 }
 
-.task-text {
+.task-content {
     flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.task-text {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.task-due {
+    font-size: 0.7rem;
+    margin-top: 1px;
+}
+
+.task-due-future {
+    color: var(--text-secondary);
+}
+
+.task-due-today {
+    color: #f59e0b;
+    /* Warning/Orange */
+    font-weight: 500;
+}
+
+.task-due-overdue {
+    color: #ef4444;
+    /* Error/Red */
+    font-weight: 600;
 }
 
 /* Time tracking button */
@@ -308,6 +335,7 @@
 
 .time-entry {
     display: flex;
+    justify-content: space-between;
     align-items: center;
     gap: 0.5rem;
     padding: 0.4rem 0.5rem;
@@ -317,16 +345,30 @@
     font-size: 0.75rem;
 }
 
-.time-entry-task {
+.time-entry-details {
     flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.time-entry-task {
+    font-weight: 500;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
+.time-entry-range {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    margin-top: 1px;
+}
+
 .time-entry-duration {
     font-family: monospace;
     color: var(--success);
+    font-weight: 600;
 }
 
 .time-entry-delete {
@@ -481,6 +523,11 @@
     border-left: 3px solid #4285f4 !important;
     border-radius: 4px !important;
     font-size: 0.75rem !important;
+}
+
+.fc-event.gcal-event.gcal-linked {
+    border-left-color: var(--success) !important;
+    background-color: rgba(16, 185, 129, 0.15) !important;
 }
 
 /* Calendar Summary Bar */
@@ -766,4 +813,103 @@
         flex: 1;
         min-width: 250px;
     }
+}
+
+/* Gcal Link Section in Modal */
+.gcal-event-info {
+    padding: 0.5rem 0;
+    margin-bottom: 1rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.gcal-event-info p {
+    margin: 0.25rem 0;
+    font-size: 0.9rem;
+}
+
+.gcal-link-section {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    background: rgba(30, 41, 59, 0.5);
+    border-radius: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.gcal-link-section label {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.gcal-link-section select {
+    flex: 1;
+    min-width: 120px;
+    padding: 0.4rem;
+    background: rgba(30, 41, 59, 0.8);
+    border: 1px solid var(--border-color);
+    border-radius: 0.25rem;
+    color: var(--text-primary);
+    font-size: 0.85rem;
+}
+
+.gcal-link-btn {
+    padding: 0.4rem 0.75rem;
+    background: var(--accent-primary);
+    border: none;
+    border-radius: 0.25rem;
+    color: white;
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+
+.gcal-link-btn:hover {
+    background: var(--accent-secondary);
+}
+
+.link-status {
+    font-size: 0.75rem;
+    color: var(--success);
+    width: 100%;
+}
+
+.logged-note {
+    font-size: 0.8rem;
+    color: var(--success);
+    margin: 0.5rem 0;
+}
+
+/* Log Past Events Button */
+.log-past-btn {
+    width: 100%;
+    padding: 0.6rem;
+    margin-top: 0.5rem;
+    background: rgba(66, 133, 244, 0.2);
+    border: 1px solid #4285f4;
+    border-radius: 0.5rem;
+    color: #4285f4;
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: all 0.2s;
+}
+
+.log-past-btn:hover {
+    background: rgba(66, 133, 244, 0.3);
+}
+
+/* Time Log Date Header */
+.time-log-date-header {
+    padding: 0.5rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: rgba(30, 41, 59, 0.3);
+    border-radius: 0.25rem;
+    margin-top: 0.5rem;
+    margin-bottom: 0.25rem;
+}
+
+.time-log-date-header:first-child {
+    margin-top: 0;
 }

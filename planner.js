@@ -12,11 +12,14 @@ class Planner {
             gcalUrl: '',
             gcalVisible: false,
             workStartHour: 10,
-            workEndHour: 18
+            workEndHour: 18,
+            gcalProjectLinks: {},    // Maps gcal event ID to project name
+            loggedGcalEvents: []     // Tracks gcal event IDs that have been logged as time entries
         };
         this.activeTimer = null;
         this.activeTimerInterval = null;
         this.gcalEvents = [];
+        this.editEntryIndex = null;
     }
 
     async init() {
@@ -25,6 +28,9 @@ class Planner {
 
         // Load planner data from persistent storage
         await this.loadPlannerData();
+
+        // Fix any UTC-date mismatches
+        this.repairTimeEntryDates();
 
         // Initialize UI
         this.renderProjects();
@@ -36,9 +42,14 @@ class Planner {
         this.setupCustomTimeEntry();
         this.setupGoogleCalendar();
         this.setupWorkingHours();
+        this.setupLogPastEvents();
+        this.setupEditTimeEntry();
 
         // Initial summary update
         this.updateSummaryStats();
+
+        // Restore active timer if exists
+        this.restoreActiveTimer();
     }
 
     setupCustomTimeEntry() {
@@ -91,7 +102,7 @@ class Planner {
                 startTime: now - (duration * 1000),
                 endTime: now,
                 duration: duration,
-                date: new Date().toISOString().split('T')[0]
+                date: this.getLocalDateString(new Date())
             });
 
             this.savePlannerData();
@@ -103,6 +114,217 @@ class Planner {
             hoursInput.value = '';
             minutesInput.value = '';
         });
+    }
+
+    restoreActiveTimer() {
+        if (this.plannerData.activeTimer) {
+            this.activeTimer = this.plannerData.activeTimer;
+            // Restart interval
+            this.activeTimerInterval = setInterval(() => {
+                this.renderTasks();
+            }, 1000);
+        }
+    }
+
+    setupEditTimeEntry() {
+        const modal = document.getElementById('editTimeModal');
+        const closeBtn = document.getElementById('editTimeClose');
+        const cancelBtn = document.getElementById('editTimeCancel');
+        const saveBtn = document.getElementById('editTimeSave');
+        const taskInput = document.getElementById('editTimeTask');
+        const hoursInput = document.getElementById('editTimeHours');
+        const minsInput = document.getElementById('editTimeMinutes');
+        const secsInput = document.getElementById('editTimeSeconds');
+        const startInput = document.getElementById('editTimeStart');
+        const endInput = document.getElementById('editTimeEnd');
+        const dateInput = document.getElementById('editTimeDate');
+
+        const closeModal = () => {
+            modal.classList.add('hidden');
+            this.editEntryIndex = null;
+        };
+
+        const updateDurationFromTimes = () => {
+            if (!startInput.value || !endInput.value) return;
+
+            const [startH, startM] = startInput.value.split(':').map(Number);
+            const [endH, endM] = endInput.value.split(':').map(Number);
+
+            // Assume same day
+            let start = new Date(0, 0, 0, startH, startM);
+            let end = new Date(0, 0, 0, endH, endM);
+
+            // Handle overnight (if end < start, assume next day)
+            // But simple logic for now: if end < start, it might be negative, which is handled or just assume same day/error
+            if (end < start) {
+                // simple check, maybe don't update if invalid
+                return;
+            }
+
+            const diffSeconds = (end - start) / 1000;
+            const h = Math.floor(diffSeconds / 3600);
+            const m = Math.floor((diffSeconds % 3600) / 60);
+            const s = diffSeconds % 60;
+
+            hoursInput.value = h;
+            minsInput.value = m;
+            secsInput.value = s;
+        };
+
+        const updateEndTimeFromDuration = () => {
+            if (!startInput.value) return;
+
+            const h = parseInt(hoursInput.value) || 0;
+            const m = parseInt(minsInput.value) || 0;
+            const s = parseInt(secsInput.value) || 0;
+
+            const totalSeconds = (h * 3600) + (m * 60) + s;
+            const [startH, startM] = startInput.value.split(':').map(Number);
+
+            const date = new Date(0, 0, 0, startH, startM);
+            date.setSeconds(date.getSeconds() + totalSeconds);
+
+            const endH = date.getHours().toString().padStart(2, '0');
+            const endM = date.getMinutes().toString().padStart(2, '0');
+
+            endInput.value = `${endH}:${endM}`;
+        };
+
+        startInput.addEventListener('change', updateDurationFromTimes);
+        endInput.addEventListener('change', updateDurationFromTimes);
+
+        hoursInput.addEventListener('input', updateEndTimeFromDuration);
+        minsInput.addEventListener('input', updateEndTimeFromDuration);
+        secsInput.addEventListener('input', updateEndTimeFromDuration);
+
+        closeBtn.addEventListener('click', closeModal);
+        cancelBtn.addEventListener('click', closeModal);
+
+        saveBtn.addEventListener('click', () => {
+            if (this.editEntryIndex === null) return;
+
+            const taskText = taskInput.value.trim();
+            if (!taskText) {
+                alert('Task description is required');
+                return;
+            }
+            const h = parseInt(hoursInput.value) || 0;
+            const m = parseInt(minsInput.value) || 0;
+            const s = parseInt(secsInput.value) || 0;
+
+            const newDuration = (h * 3600) + (m * 60) + s;
+
+            if (newDuration === 0) {
+                alert('Duration cannot be zero');
+                return;
+            }
+
+            // Update entry
+            const entry = this.plannerData.timeEntries[this.editEntryIndex];
+            if (entry) {
+                entry.taskText = taskText;
+
+                // Handle time range changes
+                let newStart, newEnd;
+                let refDateStr = dateInput.value || entry.date;
+                // If user cleared date, fallback to entry.date or today
+
+                if (startInput.value && endInput.value && refDateStr) {
+                    // Parse HH:MM
+                    const [startH, startM] = startInput.value.split(':').map(Number);
+                    const [endH, endM] = endInput.value.split(':').map(Number);
+
+                    // Create dates based on input date
+                    const parts = refDateStr.split('-');
+                    const year = parseInt(parts[0]);
+                    const month = parseInt(parts[1]) - 1;
+                    const day = parseInt(parts[2]);
+
+                    newStart = new Date(year, month, day, startH, startM);
+                    newEnd = new Date(year, month, day, endH, endM);
+
+                    // Simple overnight check: if end < start, maybe next day? 
+                    // For now, assume user knows what they are doing with 24h time.
+                    // If end < start, it results in negative duration usually caught.
+                    if (newEnd < newStart) {
+                        // Attempt next day? Or warn?
+                        // Let's warn to be safe
+                        alert('End time is before start time.');
+                        return;
+                    }
+
+                    const diffMs = newEnd - newStart;
+                    entry.startTime = newStart.getTime();
+                    entry.endTime = newEnd.getTime();
+                    entry.duration = Math.floor(diffMs / 1000);
+
+                    // Update the text date field
+                    entry.date = refDateStr;
+                } else {
+                    // Fallback to manual duration
+                    entry.duration = newDuration;
+
+                    // Sync endTime consistent with duration if possible
+                    if (entry.startTime) {
+                        entry.endTime = entry.startTime + (newDuration * 1000);
+                    }
+                }
+            }
+
+            this.savePlannerData();
+            this.renderTimeLog();
+            this.updateSummaryStats();
+            // renderTasks updates the sum of time for tasks
+            this.renderTasks();
+
+            closeModal();
+        });
+    }
+
+    openEditModal(index) {
+        const entry = this.plannerData.timeEntries[index];
+        if (!entry) return;
+
+        this.editEntryIndex = index;
+        const modal = document.getElementById('editTimeModal');
+        const taskInput = document.getElementById('editTimeTask');
+        const hoursInput = document.getElementById('editTimeHours');
+        const minsInput = document.getElementById('editTimeMinutes');
+        const secsInput = document.getElementById('editTimeSeconds');
+
+        const startInput = document.getElementById('editTimeStart');
+        const endInput = document.getElementById('editTimeEnd');
+        const dateInput = document.getElementById('editTimeDate');
+
+        // Populate fields
+        taskInput.value = entry.taskText || entry.task || '';
+        dateInput.value = entry.date || ''; // YYYY-MM-DD
+
+        // Populate times if available
+        if (entry.startTime) {
+            const startDate = new Date(entry.startTime);
+            startInput.value = startDate.toTimeString().substring(0, 5); // HH:MM
+        } else {
+            startInput.value = '';
+        }
+
+        if (entry.endTime) {
+            const endDate = new Date(entry.endTime);
+            endInput.value = endDate.toTimeString().substring(0, 5); // HH:MM
+        } else {
+            endInput.value = '';
+        }
+
+        const duration = entry.duration || 0;
+        const h = Math.floor(duration / 3600);
+        const m = Math.floor((duration % 3600) / 60);
+        const s = duration % 60;
+
+        hoursInput.value = h;
+        minsInput.value = m;
+        secsInput.value = s;
+
+        modal.classList.remove('hidden');
     }
 
     loadFromLocalStorage() {
@@ -124,7 +346,8 @@ class Planner {
                 const { invoke } = window.__TAURI__.tauri;
                 const data = await invoke('load_planner_data');
                 if (data) {
-                    this.plannerData = JSON.parse(data);
+                    const parsed = JSON.parse(data);
+                    this.plannerData = { ...this.plannerData, ...parsed };
                 }
             } catch (e) {
                 console.warn('Failed to load planner data:', e);
@@ -133,9 +356,14 @@ class Planner {
             // Fallback to localStorage for web
             const stored = localStorage.getItem('plannerData');
             if (stored) {
-                this.plannerData = JSON.parse(stored);
+                const parsed = JSON.parse(stored);
+                this.plannerData = { ...this.plannerData, ...parsed };
             }
         }
+
+        // Ensure new fields exist
+        if (!this.plannerData.gcalProjectLinks) this.plannerData.gcalProjectLinks = {};
+        if (!this.plannerData.loggedGcalEvents) this.plannerData.loggedGcalEvents = [];
 
         // Cleanup: Remove any Google Calendar events that were incorrectly saved as planned events
         const originalCount = this.plannerData.events.length;
@@ -236,25 +464,85 @@ class Planner {
             return;
         }
 
-        const projectTasks = this.tasks.filter(t => t.project === this.selectedProject.name);
+        // Filter by project only (include completed for bottom display)
+        let projectTasks = this.tasks.filter(t => t.project === this.selectedProject.name);
 
         if (projectTasks.length === 0) {
             container.innerHTML = '<p class="empty-message">No tasks in this project</p>';
             return;
         }
 
+        // Sort: Incomplete first, then by deadline
+        projectTasks.sort((a, b) => {
+            // 1. Completion status (false/incomplete comes first)
+            if (a.completed !== b.completed) {
+                return a.completed ? 1 : -1;
+            }
+            // 2. Deadline
+            if (!a.deadline) return 1;
+            if (!b.deadline) return -1;
+            return new Date(a.deadline) - new Date(b.deadline);
+        });
+
         container.innerHTML = '';
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
 
         projectTasks.forEach((task, index) => {
-            const taskId = `${task.project}-${task.experiment}-${index}`;
+            // Re-find original index to keep consistent IDs if needed, 
+            // but for now we use the filtered index which might mismatch if we rely on global index.
+            // However, the original code used `index` from `filter` result, so we stick to that or better:
+            // Let's use a composite ID based on text/project to be safer or just keep current "index" of filtered list.
+            // The original used: `${task.project}-${task.experiment}-${index}`. 
+            // WARNING: Using index from a filtered/sorted list will change ID if list order changes.
+            // Ideally we need a unique ID. Assuming task text + project is unique enough for now or 
+            // if `task` object has an `id`? It doesn't seem to.
+            // Let's rely on the fact that this is just for the timer ID in this session.
+
+            const taskId = `${task.project}-${task.experiment}-${task.text.substring(0, 10).replace(/\s+/g, '')}`;
             const timeEntry = this.getTaskTime(taskId);
             const isActive = this.activeTimer?.taskId === taskId;
+
+            // Calculate days left
+            let dueDisplay = '';
+            if (task.deadline) {
+                const deadlineDate = new Date(task.deadline);
+                // Fix timezone issue - dates are often YYYY-MM-DD which parse as UTC
+                const parts = task.deadline.split('-');
+                if (parts.length === 3) {
+                    deadlineDate.setFullYear(parts[0], parts[1] - 1, parts[2]);
+                    deadlineDate.setHours(0, 0, 0, 0);
+                } else {
+                    deadlineDate.setHours(0, 0, 0, 0);
+                }
+
+                const diffTime = deadlineDate - today;
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+                let dueClass = 'task-due-future';
+                let dueText = `${diffDays} days left`;
+
+                if (diffDays < 0) {
+                    dueClass = 'task-due-overdue';
+                    dueText = `${Math.abs(diffDays)}d overdue`;
+                } else if (diffDays === 0) {
+                    dueClass = 'task-due-today';
+                    dueText = 'Due today';
+                } else if (diffDays === 1) {
+                    dueText = '1 day left';
+                }
+
+                dueDisplay = `<span class="task-due ${dueClass}">${dueText}</span>`;
+            }
 
             const div = document.createElement('div');
             div.className = `task-item${task.completed ? ' completed' : ''}`;
             div.innerHTML = `
                 <div class="task-checkbox${task.completed ? ' checked' : ''}"></div>
-                <span class="task-text" title="${task.text}">${task.text}</span>
+                <div class="task-content">
+                    <span class="task-text" title="${task.text}">${task.text}</span>
+                    ${dueDisplay}
+                </div>
                 <div class="task-timer">
                     <span class="task-time">${this.formatTime(timeEntry + (isActive ? this.getActiveTimerElapsed() : 0))}</span>
                     <button class="timer-btn ${isActive ? 'pause' : 'play'}" data-task-id="${taskId}">
@@ -267,6 +555,15 @@ class Planner {
             div.querySelector('.timer-btn').addEventListener('click', (e) => {
                 e.stopPropagation();
                 this.toggleTimer(taskId, task);
+            });
+
+            // Checkbox click (complete task)
+            div.querySelector('.task-checkbox').addEventListener('click', (e) => {
+                e.stopPropagation();
+                // Toggle completion (optimistic update)
+                task.completed = true;
+                this.renderTasks();
+                // Note: We aren't saving this back to Obsidian yet, but user just wanted display changes for now.
             });
 
             container.appendChild(div);
@@ -307,10 +604,38 @@ class Planner {
             startTime: Date.now()
         };
 
+        // Persist active timer
+        this.plannerData.activeTimer = this.activeTimer;
+        this.savePlannerData();
+
         // Update display every second
         this.activeTimerInterval = setInterval(() => {
             this.renderTasks();
         }, 1000);
+    }
+
+    getLocalDateString(date = new Date()) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
+    repairTimeEntryDates() {
+        let repairedCount = 0;
+        this.plannerData.timeEntries.forEach(entry => {
+            if (entry.startTime) {
+                const correctDate = this.getLocalDateString(new Date(entry.startTime));
+                if (entry.date !== correctDate) {
+                    entry.date = correctDate;
+                    repairedCount++;
+                }
+            }
+        });
+        if (repairedCount > 0) {
+            console.log(`Repaired ${repairedCount} time entries with incorrect date strings.`);
+            this.savePlannerData();
+        }
     }
 
     stopTimer() {
@@ -328,12 +653,15 @@ class Planner {
             startTime: this.activeTimer.startTime,
             endTime: Date.now(),
             duration: duration,
-            date: new Date().toISOString().split('T')[0]
+            date: this.getLocalDateString(new Date(this.activeTimer.startTime)) // Use start time's local date
         });
 
+        this.plannerData.activeTimer = null; // Clear persisted timer
         this.savePlannerData();
         this.activeTimer = null;
         this.activeTimerInterval = null;
+        this.renderTimeLog();
+        this.updateSummaryStats();
     }
 
     formatTime(seconds) {
@@ -343,52 +671,119 @@ class Planner {
         return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     }
 
+    formatTimeOfDay(timestamp) {
+        if (!timestamp) return '';
+        const date = new Date(timestamp);
+        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
     renderTimeLog() {
         const container = document.getElementById('timeLog');
         const today = new Date().toISOString().split('T')[0];
 
-        const todayEntries = this.plannerData.timeEntries.filter(e => e.date === today);
+        // Sort entries by time descending
+        const sortedEntries = [...this.plannerData.timeEntries].sort((a, b) => {
+            const timeA = a.endTime || a.startTime;
+            const timeB = b.endTime || b.startTime;
+            return timeB - timeA;
+        });
 
-        if (todayEntries.length === 0) {
-            container.innerHTML = '<p class="empty-message">No time entries today</p>';
+        if (sortedEntries.length === 0) {
+            container.innerHTML = '<p class="empty-message">No time entries</p>';
             document.querySelector('#totalTime span').textContent = '00:00:00';
             return;
         }
 
         container.innerHTML = '';
+        let currentDate = null;
 
-        todayEntries.forEach((entry, index) => {
+        sortedEntries.forEach((entry) => {
+            // Add date header if date changes
+            if (entry.date !== currentDate) {
+                currentDate = entry.date;
+                const dateHeader = document.createElement('div');
+                dateHeader.className = 'time-log-date-header';
+                dateHeader.textContent = currentDate === today ? 'Today' : new Date(currentDate).toLocaleDateString();
+                container.appendChild(dateHeader);
+            }
+
             // Find the actual index in the full timeEntries array
             const entryIndex = this.plannerData.timeEntries.indexOf(entry);
+            const taskText = entry.taskText || entry.task || 'Untitled Task';
+
+            let timeRange = '';
+            if (entry.startTime && entry.endTime) {
+                const startStr = this.formatTimeOfDay(entry.startTime);
+                const endStr = this.formatTimeOfDay(entry.endTime);
+                timeRange = `<span class="time-entry-range">${startStr} - ${endStr}</span>`;
+            }
 
             const div = document.createElement('div');
             div.className = 'time-entry';
             div.innerHTML = `
-                <span class="time-entry-task" title="${entry.taskText}">${entry.taskText}</span>
+                <div class="time-entry-details">
+                    <span class="time-entry-task" title="${taskText}">${taskText}</span>
+                    ${timeRange}
+                </div>
                 <span class="time-entry-duration">${this.formatTime(entry.duration)}</span>
                 <button class="time-entry-delete" data-index="${entryIndex}" title="Delete entry">×</button>
             `;
 
-            // Delete button handler
+            // Add click listener for delete
             div.querySelector('.time-entry-delete').addEventListener('click', (e) => {
                 e.stopPropagation();
-                this.deleteTimeEntry(entryIndex);
+                if (confirm('Delete this time entry?')) {
+                    const idx = parseInt(e.target.dataset.index);
+                    if (!isNaN(idx)) {
+                        // If it was a gcal event, unmark it as logged
+                        const entry = this.plannerData.timeEntries[idx];
+                        if (entry && entry.taskId && entry.taskId.startsWith('gcal-')) {
+                            const gcalId = entry.taskId.replace('gcal-', '');
+                            const logIndex = this.plannerData.loggedGcalEvents?.indexOf(gcalId);
+                            if (logIndex > -1) {
+                                this.plannerData.loggedGcalEvents.splice(logIndex, 1);
+                            }
+                        }
+
+                        this.plannerData.timeEntries.splice(idx, 1);
+                        this.savePlannerData();
+                        this.renderTimeLog();
+                        this.updateSummaryStats();
+                        this.renderTasks();
+                    }
+                }
             });
+
+            // Add click listener for edit
+            const editBtn = document.createElement('button');
+            editBtn.className = 'time-entry-edit';
+            editBtn.innerHTML = '✏️';
+            editBtn.title = 'Edit entry';
+            editBtn.style.marginRight = '0.5rem';
+            editBtn.style.background = 'none';
+            editBtn.style.border = 'none';
+            editBtn.style.cursor = 'pointer';
+            editBtn.style.fontSize = '0.9rem';
+            editBtn.style.opacity = '0.6';
+
+            editBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.openEditModal(entryIndex);
+            });
+
+            // Insert edit button before delete button
+            const deleteBtn = div.querySelector('.time-entry-delete');
+            div.insertBefore(editBtn, deleteBtn);
 
             container.appendChild(div);
         });
 
-        const totalSeconds = todayEntries.reduce((sum, e) => sum + e.duration, 0);
-        document.querySelector('#totalTime span').textContent = this.formatTime(totalSeconds);
-    }
+        // Calculate total time (for today)
+        const todayTotal = this.plannerData.timeEntries
+            .filter(e => e.date === today)
+            .reduce((acc, curr) => acc + (curr.duration || 0), 0);
 
-    deleteTimeEntry(index) {
-        if (confirm('Delete this time entry?')) {
-            this.plannerData.timeEntries.splice(index, 1);
-            this.savePlannerData();
-            this.renderTimeLog();
-            this.renderTasks(); // Update task times
-        }
+        document.querySelector('#totalTime span').textContent = this.formatTime(todayTotal);
     }
 
     initCalendar() {
@@ -449,8 +844,10 @@ class Planner {
             eventReceive: (info) => {
                 // Event was dropped from external source, save it
                 const priority = info.event.extendedProps?.priority || 'low';
+                // Always generate a unique ID for the event
+                const eventId = info.event.id || `event-${Date.now()}`;
                 const event = {
-                    id: info.event.id || `event-${Date.now()}`,
+                    id: eventId,
                     title: info.event.title,
                     start: info.event.start?.toISOString(),
                     end: info.event.end?.toISOString(),
@@ -459,6 +856,10 @@ class Planner {
                     tasks: []
                 };
                 this.plannerData.events.push(event);
+                // Sync the ID and eventType back to the FullCalendar event object
+                // so that eventClick → deleteCalendarEvent uses the correct ID
+                info.event.setProp('id', eventId);
+                info.event.setExtendedProp('eventType', 'planned');
                 this.savePlannerData();
                 this.updateSummaryStats();
             },
@@ -490,16 +891,17 @@ class Planner {
             const startTime = new Date(entry.startTime);
             const endTime = new Date(entry.endTime);
 
+            const taskTitle = entry.taskText || entry.task || 'Untitled Task';
             return {
                 id: `tracked-${index}`,
-                title: `✓ ${entry.taskText.substring(0, 20)}...`,
+                title: `✓ ${taskTitle.substring(0, 20)}...`,
                 start: startTime.toISOString(),
                 end: endTime.toISOString(),
                 className: 'tracked-event',
                 editable: false,
                 extendedProps: {
                     eventType: 'tracked',
-                    taskText: entry.taskText,
+                    taskText: taskTitle,
                     project: entry.project,
                     duration: entry.duration
                 }
@@ -523,10 +925,10 @@ class Planner {
         });
     }
 
-    deleteCalendarEvent(eventId) {
+    async deleteCalendarEvent(eventId) {
         // Remove from plannerData
         this.plannerData.events = this.plannerData.events.filter(e => e.id !== eventId);
-        this.savePlannerData();
+        await this.savePlannerData();
 
         // Remove from calendar
         const event = this.calendar.getEventById(eventId);
@@ -578,7 +980,8 @@ class Planner {
 
         this.calendar.addEvent({
             ...event,
-            className: `project-event priority-${priority}`
+            className: `project-event priority-${priority}`,
+            extendedProps: { ...event, eventType: 'planned' }
         });
 
         this.savePlannerData();
@@ -586,16 +989,17 @@ class Planner {
 
     saveCalendarEvents() {
         const events = this.calendar.getEvents();
-        // Only save planned events, not tracked or gcal events
+        // Only save planned events using positive matching
         this.plannerData.events = events
             .filter(e => {
                 const eventType = e.extendedProps?.eventType;
                 const id = e.id || '';
-                // Exclude tracked events
-                if (eventType === 'tracked' || id.startsWith('tracked-')) return false;
-                // Exclude Google Calendar events
-                if (eventType === 'gcal' || id.startsWith('gcal-')) return false;
-                return true;
+                // Include events explicitly marked as planned
+                if (eventType === 'planned') return true;
+                // Include events with our generated IDs (from addProjectEvent)
+                if (id.startsWith('event-')) return true;
+                // Exclude everything else (tracked, gcal, etc.)
+                return false;
             })
             .map(e => ({
                 id: e.id,
@@ -616,6 +1020,7 @@ class Planner {
         const tasksContainer = document.getElementById('eventTasks');
 
         const isTrackedEvent = event.extendedProps?.eventType === 'tracked';
+        const isGcalEvent = event.extendedProps?.eventType === 'gcal';
 
         // For tracked events, show different info
         if (isTrackedEvent) {
@@ -628,6 +1033,73 @@ class Planner {
                 </div>
             `;
             // Remove delete button for tracked events
+            const existingDeleteBtn = modal.querySelector('.modal-delete-btn');
+            if (existingDeleteBtn) existingDeleteBtn.remove();
+
+            modal.classList.remove('hidden');
+            return;
+        }
+
+        // For Google Calendar events, show link-to-project option
+        if (isGcalEvent) {
+            title.textContent = `📅 ${event.title}`;
+
+            const duration = event.end ? (event.end - event.start) / (1000 * 60 * 60) : 1;
+            const currentLink = this.plannerData.gcalProjectLinks[event.id] || '';
+            const isLogged = this.plannerData.loggedGcalEvents.includes(event.id);
+
+            // Build project options
+            const projectOptions = this.projects.map(p =>
+                `<option value="${p.name}" ${currentLink === p.name ? 'selected' : ''}>${p.name}</option>`
+            ).join('');
+
+            tasksContainer.innerHTML = `
+                <div class="gcal-event-info">
+                    <p><strong>Duration:</strong> ${duration.toFixed(1)}h</p>
+                    <p><strong>Time:</strong> ${event.start.toLocaleTimeString()} - ${event.end?.toLocaleTimeString() || 'N/A'}</p>
+                    <p><strong>Date:</strong> ${event.start.toLocaleDateString()}</p>
+                    ${event.extendedProps?.location ? `<p><strong>Location:</strong> ${event.extendedProps.location}</p>` : ''}
+                </div>
+                <div class="gcal-link-section">
+                    <label>Link to Project:</label>
+                    <select id="gcalProjectSelect">
+                        <option value="">— None —</option>
+                        ${projectOptions}
+                    </select>
+                    <button id="gcalLinkBtn" class="gcal-link-btn">${currentLink ? 'Update' : 'Link'}</button>
+                    ${currentLink ? `<span class="link-status">✓ Linked to ${currentLink}</span>` : ''}
+                </div>
+                ${isLogged ? '<p class="logged-note">✓ Already logged as time entry</p>' : ''}
+            `;
+
+            // Setup link button handler
+            setTimeout(() => {
+                const linkBtn = document.getElementById('gcalLinkBtn');
+                const select = document.getElementById('gcalProjectSelect');
+                if (linkBtn && select) {
+                    linkBtn.onclick = () => {
+                        const selectedProject = select.value;
+                        if (selectedProject) {
+                            this.plannerData.gcalProjectLinks[event.id] = selectedProject;
+                        } else {
+                            delete this.plannerData.gcalProjectLinks[event.id];
+                        }
+                        this.savePlannerData();
+                        this.updateSummaryStats();
+
+                        // Refresh calendar display
+                        const calendarEvent = this.calendar.getEventById(event.id);
+                        if (calendarEvent) {
+                            const isLinked = !!selectedProject;
+                            calendarEvent.setProp('classNames', `gcal-event${isLinked ? ' gcal-linked' : ''}`);
+                        }
+
+                        modal.classList.add('hidden');
+                    };
+                }
+            }, 0);
+
+            // Remove delete button for gcal events
             const existingDeleteBtn = modal.querySelector('.modal-delete-btn');
             if (existingDeleteBtn) existingDeleteBtn.remove();
 
@@ -808,6 +1280,134 @@ class Planner {
         endInput.addEventListener('change', handleChange);
     }
 
+
+
+    setupLogPastEvents() {
+        const btn = document.getElementById('logPastEventsBtn');
+        if (!btn) return;
+
+        btn.addEventListener('click', () => {
+            // Find past, linked, unlogged events
+            const now = new Date();
+            const loggableEvents = this.gcalEvents.filter(e => {
+                const end = e.end ? new Date(e.end) : new Date(new Date(e.start).getTime() + 3600000);
+                const isPast = end < now;
+                const project = this.plannerData.gcalProjectLinks?.[e.id];
+                const isLogged = this.plannerData.loggedGcalEvents?.includes(e.id);
+
+                // Only include if past, linked to a project, and NOT already logged
+                return isPast && project && !isLogged && !e.allDay;
+            });
+
+            if (loggableEvents.length === 0) {
+                alert('No past linked events found to log!');
+                return;
+            }
+
+            this.showLogEventsModal(loggableEvents);
+        });
+    }
+
+    showLogEventsModal(events) {
+        const modal = document.getElementById('taskModal');
+        const title = document.getElementById('modalTitle');
+        const content = document.getElementById('eventTasks');
+
+        title.textContent = '📅 Log Past Events';
+
+        let html = '<div class="log-events-list" style="max-height: 400px; overflow-y: auto; margin-bottom: 1rem;">';
+        events.forEach(e => {
+            const project = this.plannerData.gcalProjectLinks[e.id];
+            const start = new Date(e.start);
+            const end = e.end ? new Date(e.end) : new Date(start.getTime() + 3600000);
+            const duration = (end - start) / (1000 * 60 * 60);
+
+            html += `
+                <div class="log-event-item" style="padding: 0.5rem; border-bottom: 1px solid var(--border-color); display: flex; align-items: start; gap: 0.5rem;">
+                    <input type="checkbox" id="log-${e.id}" checked style="margin-top: 0.3rem;">
+                    <label for="log-${e.id}" style="cursor: pointer; flex: 1;">
+                        <div class="log-event-details">
+                            <div style="font-weight: 600; color: var(--text-primary);">${e.title}</div>
+                            <div style="font-size: 0.8rem; color: var(--text-secondary);">
+                                ${start.toLocaleDateString()} ${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • 
+                                <span style="color: var(--accent-primary);">${project}</span> • 
+                                ${duration.toFixed(1)}h
+                            </div>
+                        </div>
+                    </label>
+                </div>
+            `;
+        });
+        html += '</div>';
+
+        html += `
+            <div class="log-events-actions" style="display: flex; justify-content: flex-end; gap: 0.5rem; border-top: 1px solid var(--border-color); padding-top: 1rem;">
+                <button class="entry-btn cancel" onclick="document.getElementById('taskModal').classList.add('hidden')">Cancel</button>
+                <button id="confirmLogBtn" class="entry-btn save">Log Selected Events</button>
+            </div>
+        `;
+
+        content.innerHTML = html;
+
+        // Add delete/close button cleanup
+        const existingDeleteBtn = modal.querySelector('.modal-delete-btn');
+        if (existingDeleteBtn) existingDeleteBtn.remove();
+
+        // Setup confirm handler
+        setTimeout(() => {
+            const confirmBtn = document.getElementById('confirmLogBtn');
+            if (confirmBtn) {
+                confirmBtn.onclick = () => {
+                    const checkboxes = content.querySelectorAll('input[type="checkbox"]:checked');
+                    let loggedCount = 0;
+
+                    checkboxes.forEach(cb => {
+                        const eventId = cb.id.replace('log-', '');
+                        const event = events.find(e => e.id === eventId);
+                        if (event) {
+                            const project = this.plannerData.gcalProjectLinks[eventId];
+                            const start = new Date(event.start);
+                            const end = event.end ? new Date(event.end) : new Date(start.getTime() + 3600000);
+                            const durationSeconds = (end - start) / 1000;
+
+                            // Create time entry
+                            const newEntry = {
+                                id: Date.now() + Math.random(),
+                                taskId: `gcal-${eventId}`, // Unique ID derived from gcal event
+                                project: project,
+                                taskText: event.title,
+                                startTime: start.getTime(),
+                                endTime: end.getTime(),
+                                duration: durationSeconds,
+                                date: start.toISOString().split('T')[0]
+                            };
+
+                            this.plannerData.timeEntries.push(newEntry);
+
+                            // Mark as logged
+                            if (!this.plannerData.loggedGcalEvents) this.plannerData.loggedGcalEvents = [];
+                            this.plannerData.loggedGcalEvents.push(eventId);
+
+                            loggedCount++;
+                        }
+                    });
+
+                    if (loggedCount > 0) {
+                        this.savePlannerData();
+                        this.renderTimeLog();
+                        this.updateSummaryStats();
+                        // Refetch events to update calendar display (tracked vs gcal) if needed, 
+                        // or just rely on summary stats update
+                        alert(`Successfully logged ${loggedCount} events!`);
+                        modal.classList.add('hidden');
+                    }
+                };
+            }
+        }, 0);
+
+        modal.classList.remove('hidden');
+    }
+
     async fetchGoogleCalendarEvents() {
         const url = this.plannerData.gcalUrl;
         if (!url) return;
@@ -920,13 +1520,16 @@ class Planner {
     }
 
     createEventFromParsed(currentEvent, startDate, endDate, isAllDay, instanceIndex = 0) {
+        const id = `gcal-${currentEvent.uid || Date.now()}-${instanceIndex}`;
+        const isLinked = this.plannerData.gcalProjectLinks && this.plannerData.gcalProjectLinks[id];
+
         return {
-            id: `gcal-${currentEvent.uid || Date.now()}-${instanceIndex}`,
+            id: id,
             title: currentEvent.summary || 'Untitled',
             start: startDate.toISOString(),
             end: endDate ? endDate.toISOString() : null,
             allDay: isAllDay,
-            className: 'gcal-event',
+            className: `gcal-event${isLinked ? ' gcal-linked' : ''}`,
             editable: false,
             extendedProps: {
                 eventType: 'gcal',
@@ -1126,10 +1729,12 @@ class Planner {
         // Update available label with current hours
         document.getElementById('statAvailableLabel').textContent = `✅ Available (${workStart}-${workEnd})`;
 
-        // Calculate Google Calendar hours in this period
+        // Calculate Google Calendar hours in this period (excluding logged events)
         let gcalHours = 0;
+        let activeGcalEvents = [];
         if (this.gcalEvents && this.gcalEvents.length > 0) {
-            gcalHours = this.calculateEventHours(this.gcalEvents, viewStart, viewEnd);
+            activeGcalEvents = this.gcalEvents.filter(e => !this.plannerData.loggedGcalEvents?.includes(e.id));
+            gcalHours = this.calculateEventHours(activeGcalEvents, viewStart, viewEnd);
         }
 
         // Calculate planned hours from planner events
@@ -1168,8 +1773,8 @@ class Planner {
 
         // Calculate overtime/outside hours for gcal and planned
         let gcalOvertime = 0;
-        if (this.gcalEvents && this.gcalEvents.length > 0) {
-            gcalOvertime = this.calculateOutsideHours(this.gcalEvents, viewStart, viewEnd);
+        if (activeGcalEvents.length > 0) {
+            gcalOvertime = this.calculateOutsideHours(activeGcalEvents, viewStart, viewEnd);
         }
 
         let plannedOvertime = 0;

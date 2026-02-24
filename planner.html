@@ -71,6 +71,7 @@
                     <div class="total-time" id="totalTime">
                         Total: <span>00:00:00</span>
                     </div>
+                    <button id="logPastEventsBtn" class="log-past-btn">📅 Log Past Events</button>
                 </div>
 
                 <div class="sidebar-section">
@@ -140,9 +141,59 @@
                 </div>
             </div>
         </div>
-    </div>
 
-    <script src="planner.js"></script>
+        <!-- Edit Time Entry Modal -->
+        <div id="editTimeModal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Edit Time Entry</h3>
+                    <button class="modal-close" id="editTimeClose">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="edit-form">
+                        <label>Task Description</label>
+                        <input type="text" id="editTimeTask" class="entry-input"
+                            style="width: 100%; margin-bottom: 1rem;">
+
+                        <div style="display: flex; gap: 1rem; margin-bottom: 1rem;">
+                            <div style="flex: 1;">
+                                <label>Date</label>
+                                <input type="date" id="editTimeDate" class="entry-input" style="width: 100%;">
+                            </div>
+                            <div style="flex: 0.7;">
+                                <label>Start Time</label>
+                                <input type="time" id="editTimeStart" class="entry-input" style="width: 100%;">
+                            </div>
+                            <div style="flex: 0.7;">
+                                <label>End Time</label>
+                                <input type="time" id="editTimeEnd" class="entry-input" style="width: 100%;">
+                            </div>
+                        </div>
+
+                        <label>Duration</label>
+                        <div class="duration-inputs"
+                            style="justify-content: flex-start; gap: 0.5rem; margin-bottom: 1rem;">
+                            <input type="number" id="editTimeHours" placeholder="H" min="0" class="duration-input">
+                            <span>:</span>
+                            <input type="number" id="editTimeMinutes" placeholder="M" min="0" max="59"
+                                class="duration-input">
+                            <span>:</span>
+                            <input type="number" id="editTimeSeconds" placeholder="S" min="0" max="59"
+                                class="duration-input">
+                        </div>
+
+                        <div class="modal-actions"
+                            style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem;">
+                            <button id="editTimeCancel" class="btn"
+                                style="background: var(--bg-secondary); border: 1px solid var(--border-color);">Cancel</button>
+                            <button id="editTimeSave" class="btn btn-primary">Save Changes</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script src="planner.js"></script>
 </body>
 
 </html>
