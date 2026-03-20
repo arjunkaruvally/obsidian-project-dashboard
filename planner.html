@@ -31,6 +31,17 @@
         <div class="planner-layout">
             <!-- Sidebar -->
             <aside class="planner-sidebar">
+                <div class="sidebar-section timer-search-card">
+                    <h3>🎯 Active Timer</h3>
+                    <div id="activeTimerDisplay" class="active-timer-display">
+                        <p class="empty-message">No timer running</p>
+                    </div>
+                    <div class="task-search-wrapper">
+                        <input type="text" id="taskSearchInput" class="task-search-input" placeholder="🔍 Search tasks to start timer...">
+                        <div id="taskSearchResults" class="task-search-results hidden"></div>
+                    </div>
+                </div>
+
                 <div class="sidebar-section">
                     <h3>📂 Projects</h3>
                     <div class="project-list" id="projectList">

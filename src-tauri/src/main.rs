@@ -201,6 +201,16 @@ fn load_planner_data(app_handle: tauri::AppHandle) -> Result<Option<String>, Str
 }
 
 #[tauri::command]
+fn start_watching_vault(app_handle: tauri::AppHandle, path: String, state: tauri::State<AppState>) -> Result<(), String> {
+    // Store vault path and start file watcher without showing folder picker
+    if let Ok(mut vault_path) = state.vault_path.lock() {
+        *vault_path = Some(path.clone());
+    }
+    start_watching(app_handle, path, &state);
+    Ok(())
+}
+
+#[tauri::command]
 fn fetch_ical_url(url: String) -> Result<String, String> {
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
@@ -233,6 +243,7 @@ fn main() {
             get_stored_vault_path,
             save_planner_data,
             load_planner_data,
+            start_watching_vault,
             fetch_ical_url
         ])
         .run(tauri::generate_context!())

@@ -23,11 +23,39 @@ class Planner {
     }
 
     async init() {
-        // Load projects/tasks from localStorage (shared with dashboard)
-        this.loadFromLocalStorage();
-
-        // Load planner data from persistent storage
+        // Load planner data from persistent storage (time entries, calendar events, etc.)
         await this.loadPlannerData();
+
+        // Load projects/tasks: prefer Tauri vault reading, fall back to localStorage
+        if (window.__TAURI__) {
+            try {
+                const { invoke } = window.__TAURI__.tauri;
+                const { listen } = window.__TAURI__.event;
+
+                // Get stored vault path and start watching
+                const storedPath = await invoke('get_stored_vault_path');
+                if (storedPath) {
+                    this.currentVaultPath = storedPath;
+                    await invoke('start_watching_vault', { path: storedPath });
+                    await this.loadVaultFromTauri(storedPath);
+                } else {
+                    // Fall back to localStorage if no vault path stored
+                    this.loadFromLocalStorage();
+                }
+
+                // Listen for vault changes — only refreshes projects/tasks,
+                // NEVER touches plannerData (time entries, calendar events, active timers)
+                listen('vault-changed', () => {
+                    console.log('Vault changed, reloading projects/tasks...');
+                    this.reloadVaultData();
+                });
+            } catch (e) {
+                console.warn('Failed to setup Tauri vault watching:', e);
+                this.loadFromLocalStorage();
+            }
+        } else {
+            this.loadFromLocalStorage();
+        }
 
         // Fix any UTC-date mismatches
         this.repairTimeEntryDates();
@@ -44,6 +72,7 @@ class Planner {
         this.setupWorkingHours();
         this.setupLogPastEvents();
         this.setupEditTimeEntry();
+        this.setupTimerSearchCard();
 
         // Initial summary update
         this.updateSummaryStats();
@@ -122,8 +151,126 @@ class Planner {
             // Restart interval
             this.activeTimerInterval = setInterval(() => {
                 this.renderTasks();
+                this.renderActiveTimerDisplay();
             }, 1000);
+            this.renderActiveTimerDisplay();
         }
+    }
+
+    setupTimerSearchCard() {
+        const searchInput = document.getElementById('taskSearchInput');
+        const resultsContainer = document.getElementById('taskSearchResults');
+
+        let debounceTimer = null;
+
+        searchInput.addEventListener('input', () => {
+            clearTimeout(debounceTimer);
+            const query = searchInput.value.trim().toLowerCase();
+
+            if (query.length < 2) {
+                resultsContainer.classList.add('hidden');
+                return;
+            }
+
+            debounceTimer = setTimeout(() => {
+                this.renderSearchResults(query);
+            }, 150);
+        });
+
+        searchInput.addEventListener('focus', () => {
+            const query = searchInput.value.trim().toLowerCase();
+            if (query.length >= 2) {
+                this.renderSearchResults(query);
+            }
+        });
+
+        // Close results when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.task-search-wrapper')) {
+                resultsContainer.classList.add('hidden');
+            }
+        });
+    }
+
+    renderSearchResults(query) {
+        const resultsContainer = document.getElementById('taskSearchResults');
+
+        // Search through all tasks (not completed)
+        const matches = this.tasks
+            .filter(t => !t.completed && (
+                t.text.toLowerCase().includes(query) ||
+                t.project.toLowerCase().includes(query) ||
+                (t.experiment && t.experiment.toLowerCase().includes(query))
+            ))
+            .slice(0, 15); // Limit results
+
+        if (matches.length === 0) {
+            resultsContainer.innerHTML = '<div class="search-no-results">No matching tasks</div>';
+            resultsContainer.classList.remove('hidden');
+            return;
+        }
+
+        resultsContainer.innerHTML = '';
+        matches.forEach(task => {
+            const taskId = `${task.project}-${task.experiment}-${task.text.substring(0, 10).replace(/\s+/g, '')}`;
+            const isActive = this.activeTimer?.taskId === taskId;
+
+            const div = document.createElement('div');
+            div.className = 'search-result-item';
+            div.innerHTML = `
+                <div class="search-result-info">
+                    <div class="search-result-task">${task.text}</div>
+                    <div class="search-result-meta">${task.project} / ${task.experiment || ''}</div>
+                </div>
+                <button class="search-result-play" title="${isActive ? 'Currently running' : 'Start timer'}">
+                    ${isActive ? '⏸' : '▶'}
+                </button>
+            `;
+
+            div.querySelector('.search-result-play').addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.toggleTimer(taskId, task);
+                this.renderActiveTimerDisplay();
+                // Clear search
+                document.getElementById('taskSearchInput').value = '';
+                resultsContainer.classList.add('hidden');
+            });
+
+            resultsContainer.appendChild(div);
+        });
+
+        resultsContainer.classList.remove('hidden');
+    }
+
+    renderActiveTimerDisplay() {
+        const container = document.getElementById('activeTimerDisplay');
+
+        if (!this.activeTimer) {
+            container.innerHTML = '<p class="empty-message">No timer running</p>';
+            return;
+        }
+
+        const elapsed = this.getActiveTimerElapsed();
+        const taskText = this.activeTimer.task?.text || 'Untitled Task';
+        const project = this.activeTimer.task?.project || '';
+
+        container.innerHTML = `
+            <div class="active-timer-item">
+                <div class="active-timer-info">
+                    <div class="active-timer-task" title="${taskText}">${taskText}</div>
+                    <div class="active-timer-project">${project}</div>
+                </div>
+                <span class="active-timer-elapsed">${this.formatTime(elapsed)}</span>
+                <button class="active-timer-stop" title="Stop timer">⏹</button>
+            </div>
+        `;
+
+        container.querySelector('.active-timer-stop').addEventListener('click', () => {
+            this.stopTimer();
+            this.renderTasks();
+            this.renderTimeLog();
+            this.renderActiveTimerDisplay();
+        });
     }
 
     setupEditTimeEntry() {
@@ -337,6 +484,213 @@ class Planner {
             } catch (e) {
                 console.error('Failed to load vault data:', e);
             }
+        }
+    }
+
+    // --- Vault reading from Tauri backend ---
+
+    async loadVaultFromTauri(vaultPath) {
+        const path = vaultPath || this.currentVaultPath;
+        if (!path || !window.__TAURI__) return;
+
+        const { invoke } = window.__TAURI__.tauri;
+        this.projects = [];
+        this.tasks = [];
+
+        try {
+            const entries = await invoke('read_vault_dir', { path });
+            for (const entry of entries) {
+                if (entry.type === 'directory' && !entry.name.startsWith('.')) {
+                    await this.processProjectFolderTauri(entry.path, entry.name);
+                }
+            }
+        } catch (e) {
+            console.error('Failed to load vault from Tauri:', e);
+        }
+    }
+
+    async processProjectFolderTauri(projectPath, projectName) {
+        const project = {
+            name: projectName,
+            experiments: [],
+            totalTasks: 0,
+            completedTasks: 0,
+            properties: {}
+        };
+
+        const { invoke } = window.__TAURI__.tauri;
+        const entries = await invoke('read_vault_dir', { path: projectPath });
+
+        let experimentsFolder = null;
+        let projectFile = null;
+
+        for (const entry of entries) {
+            if (entry.type === 'directory' && entry.name === 'experiments') {
+                experimentsFolder = entry;
+            } else if (entry.type === 'file' && entry.name.endsWith('.md')) {
+                projectFile = entry;
+            }
+        }
+
+        // Parse project file if found
+        if (projectFile) {
+            const frontmatterMatch = projectFile.content.match(/^---\n([\s\S]*?)\n---/);
+            if (frontmatterMatch) {
+                try {
+                    const properties = jsyaml.load(frontmatterMatch[1]) || {};
+                    if (properties.type === 'project') {
+                        project.properties = properties;
+                    }
+                } catch (e) {
+                    console.warn('Failed to parse project frontmatter for', projectName, e);
+                }
+            }
+        }
+
+        if (!experimentsFolder) {
+            this.projects.push(project);
+            return;
+        }
+
+        // Process experiments folder
+        const experimentEntries = await invoke('read_vault_dir', { path: experimentsFolder.path });
+
+        for (const entry of experimentEntries) {
+            if (entry.type === 'file' && entry.name.endsWith('.md')) {
+                const experiment = this.parseMarkdownFile(entry.content, entry.name, projectName);
+                if (experiment) {
+                    project.experiments.push(experiment);
+                    project.totalTasks += experiment.tasks.length;
+                    project.completedTasks += experiment.tasks.filter(t => t.completed).length;
+                }
+            }
+        }
+
+        this.projects.push(project);
+    }
+
+    parseMarkdownFile(content, filename, projectName) {
+        const experiment = {
+            name: filename.replace('.md', ''),
+            project: projectName,
+            properties: {},
+            tasks: []
+        };
+
+        // Parse frontmatter
+        const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+        if (frontmatterMatch) {
+            try {
+                experiment.properties = jsyaml.load(frontmatterMatch[1]) || {};
+            } catch (e) {
+                console.warn('Failed to parse frontmatter for', filename, e);
+            }
+        }
+
+        // Parse tasks (markdown checkboxes)
+        const taskRegex = /^[\s]*[-*]\s+\[([ xX])\]\s+(.+)$/gm;
+        let match;
+
+        while ((match = taskRegex.exec(content)) !== null) {
+            const taskText = match[2].trim();
+            const task = {
+                completed: match[1].toLowerCase() === 'x',
+                text: taskText,
+                experiment: experiment.name,
+                experimentStatus: experiment.properties.status || 'unknown',
+                project: projectName,
+                deadline: null,
+                daysUntilDeadline: null,
+                urgency: 'none',
+                doneDate: null,
+                startedDate: null
+            };
+
+            let cleanText = taskText;
+
+            // Extract deadline from @due(YYYY-MM-DD) or @deadline(YYYY-MM-DD)
+            const inlineDeadlineMatch = cleanText.match(/@(?:due|deadline)\((\d{4}-\d{2}-\d{2})\)/);
+            if (inlineDeadlineMatch) {
+                task.deadline = inlineDeadlineMatch[1];
+                cleanText = cleanText.replace(/@(?:due|deadline)\([^)]+\)/, '').trim();
+            }
+
+            // Extract deadline from emoji syntax: 📅 YYYY-MM-DD
+            const emojiDueMatch = cleanText.match(/📅\s+(\d{4}-\d{2}-\d{2})/);
+            if (emojiDueMatch) {
+                task.deadline = emojiDueMatch[1];
+                cleanText = cleanText.replace(/📅\s+\d{4}-\d{2}-\d{2}/, '').trim();
+            }
+
+            // Extract done date from @done(YYYY-MM-DD)
+            const doneDateMatch = cleanText.match(/@done\((\d{4}-\d{2}-\d{2})\)/);
+            if (doneDateMatch) {
+                task.doneDate = doneDateMatch[1];
+                cleanText = cleanText.replace(/@done\([^)]+\)/, '').trim();
+            }
+
+            // Extract done date from emoji syntax: ✅ YYYY-MM-DD
+            const emojiDoneMatch = cleanText.match(/✅\s+(\d{4}-\d{2}-\d{2})/);
+            if (emojiDoneMatch) {
+                task.doneDate = emojiDoneMatch[1];
+                cleanText = cleanText.replace(/✅\s+\d{4}-\d{2}-\d{2}/, '').trim();
+            }
+
+            // Extract started date from emoji syntax: 🛫 YYYY-MM-DD
+            const emojiStartedMatch = cleanText.match(/🛫\s+(\d{4}-\d{2}-\d{2})/);
+            if (emojiStartedMatch) {
+                task.startedDate = emojiStartedMatch[1];
+                cleanText = cleanText.replace(/🛫\s+\d{4}-\d{2}-\d{2}/, '').trim();
+            }
+
+            task.text = cleanText;
+
+            // Calculate days until deadline and urgency
+            if (task.deadline) {
+                const deadlineDate = new Date(task.deadline);
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                deadlineDate.setHours(0, 0, 0, 0);
+
+                const diffTime = deadlineDate - today;
+                const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+
+                task.daysUntilDeadline = diffDays;
+
+                if (diffDays < 0) {
+                    task.urgency = 'overdue';
+                } else if (diffDays <= 3) {
+                    task.urgency = 'urgent';
+                } else if (diffDays <= 7) {
+                    task.urgency = 'soon';
+                } else {
+                    task.urgency = 'normal';
+                }
+            }
+
+            experiment.tasks.push(task);
+            this.tasks.push(task);
+        }
+
+        return experiment;
+    }
+
+    /**
+     * Reload vault data (projects/tasks) without touching plannerData.
+     * Preserves: calendar events, time entries, active timers, gcal config.
+     * Refreshes: sidebar project list, task list, summary stats.
+     */
+    async reloadVaultData() {
+        if (!this.currentVaultPath || !window.__TAURI__) return;
+
+        try {
+            await this.loadVaultFromTauri();
+            this.renderProjects();
+            this.renderTasks();
+            this.updateSummaryStats();
+            console.log(`Vault reloaded: ${this.projects.length} projects, ${this.tasks.length} tasks`);
+        } catch (e) {
+            console.error('Failed to reload vault data:', e);
         }
     }
 
@@ -611,6 +965,7 @@ class Planner {
         // Update display every second
         this.activeTimerInterval = setInterval(() => {
             this.renderTasks();
+            this.renderActiveTimerDisplay();
         }, 1000);
     }
 
@@ -662,6 +1017,7 @@ class Planner {
         this.activeTimerInterval = null;
         this.renderTimeLog();
         this.updateSummaryStats();
+        this.renderActiveTimerDisplay();
     }
 
     formatTime(seconds) {
