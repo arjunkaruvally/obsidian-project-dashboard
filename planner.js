@@ -26,20 +26,28 @@ class Planner {
         // Load planner data from persistent storage (time entries, calendar events, etc.)
         await this.loadPlannerData();
 
+        // Archive old time entries to keep main file lean
+        await this.archiveOldTimeEntries();
+
         // Load projects/tasks: prefer Tauri vault reading, fall back to localStorage
         if (window.__TAURI__) {
             try {
                 const { invoke } = window.__TAURI__.tauri;
                 const { listen } = window.__TAURI__.event;
 
-                // Get stored vault path and start watching
-                const storedPath = await invoke('get_stored_vault_path');
-                if (storedPath) {
-                    this.currentVaultPath = storedPath;
-                    await invoke('start_watching_vault', { path: storedPath });
-                    await this.loadVaultFromTauri(storedPath);
+                // Try to get vault path: first from Rust state, then from localStorage
+                let vaultPath = await invoke('get_stored_vault_path');
+                if (!vaultPath) {
+                    vaultPath = localStorage.getItem('vaultPath');
+                }
+
+                if (vaultPath) {
+                    this.currentVaultPath = vaultPath;
+                    localStorage.setItem('vaultPath', vaultPath); // Persist for next launch
+                    await invoke('start_watching_vault', { path: vaultPath });
+                    await this.loadVaultFromTauri(vaultPath);
                 } else {
-                    // Fall back to localStorage if no vault path stored
+                    // No vault path anywhere — use cached data as last resort
                     this.loadFromLocalStorage();
                 }
 
@@ -148,10 +156,9 @@ class Planner {
     restoreActiveTimer() {
         if (this.plannerData.activeTimer) {
             this.activeTimer = this.plannerData.activeTimer;
-            // Restart interval
+            // Restart interval — only update timer text, not full DOM
             this.activeTimerInterval = setInterval(() => {
-                this.renderTasks();
-                this.renderActiveTimerDisplay();
+                this.updateTimerDisplays();
             }, 1000);
             this.renderActiveTimerDisplay();
         }
@@ -245,32 +252,129 @@ class Planner {
     renderActiveTimerDisplay() {
         const container = document.getElementById('activeTimerDisplay');
 
-        if (!this.activeTimer) {
-            container.innerHTML = '<p class="empty-message">No timer running</p>';
+        // Get 5 most recently used unique tasks from time entries
+        const recentTasks = this.getRecentTimerTasks(5);
+
+        // If no recent tasks and no active timer, show empty state
+        if (recentTasks.length === 0 && !this.activeTimer) {
+            container.innerHTML = '<p class="empty-message">No recent timers</p>';
+            this._activeTimerElapsedEl = null;
             return;
         }
 
-        const elapsed = this.getActiveTimerElapsed();
-        const taskText = this.activeTimer.task?.text || 'Untitled Task';
-        const project = this.activeTimer.task?.project || '';
+        container.innerHTML = '';
+        this._activeTimerElapsedEl = null;
 
-        container.innerHTML = `
-            <div class="active-timer-item">
+        // Always move active timer to top of list
+        let displayTasks = [...recentTasks];
+        if (this.activeTimer) {
+            // Remove active timer from wherever it is in the list
+            displayTasks = displayTasks.filter(t => t.taskId !== this.activeTimer.taskId);
+            // Prepend it at the top
+            displayTasks.unshift({
+                taskId: this.activeTimer.taskId,
+                taskText: this.activeTimer.task?.text || 'Untitled Task',
+                project: this.activeTimer.task?.project || '',
+                task: this.activeTimer.task
+            });
+            displayTasks = displayTasks.slice(0, 5);
+        }
+
+        displayTasks.forEach(item => {
+            const isActive = this.activeTimer?.taskId === item.taskId;
+            const elapsed = isActive ? this.getActiveTimerElapsed() : 0;
+            const totalTime = this.getTaskTime(item.taskId);
+
+            const div = document.createElement('div');
+            div.className = `recent-timer-item${isActive ? ' active' : ''}`;
+            div.dataset.taskId = item.taskId;
+            div.innerHTML = `
                 <div class="active-timer-info">
-                    <div class="active-timer-task" title="${taskText}">${taskText}</div>
-                    <div class="active-timer-project">${project}</div>
+                    <div class="active-timer-task" title="${item.taskText}">${item.taskText}</div>
+                    <div class="active-timer-project">${item.project}</div>
                 </div>
-                <span class="active-timer-elapsed">${this.formatTime(elapsed)}</span>
-                <button class="active-timer-stop" title="Stop timer">⏹</button>
-            </div>
-        `;
+                <span class="active-timer-elapsed">${isActive ? this.formatTime(totalTime + elapsed) : this.formatTime(totalTime)}</span>
+                <button class="recent-timer-btn ${isActive ? 'stop' : 'play'}" title="${isActive ? 'Stop' : 'Start'}">
+                    ${isActive ? '⏹' : '▶'}
+                </button>
+            `;
 
-        container.querySelector('.active-timer-stop').addEventListener('click', () => {
-            this.stopTimer();
-            this.renderTasks();
-            this.renderTimeLog();
-            this.renderActiveTimerDisplay();
+            // Cache the elapsed element for the active timer
+            if (isActive) {
+                this._activeTimerElapsedEl = div.querySelector('.active-timer-elapsed');
+                this._activeTimerBaseTime = totalTime;
+            }
+
+            div.querySelector('.recent-timer-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (isActive) {
+                    // Stop active timer
+                    this.stopTimer();
+                    this.renderTasks();
+                    this.renderTimeLog();
+                } else {
+                    // Start this timer (toggleTimer auto-stops any current one)
+                    const task = item.task || { text: item.taskText, project: item.project };
+                    this.toggleTimer(item.taskId, task);
+                }
+                this.renderActiveTimerDisplay();
+            });
+
+            container.appendChild(div);
         });
+    }
+
+    /**
+     * Get the N most recently used unique tasks from time entries.
+     */
+    getRecentTimerTasks(n) {
+        const seen = new Set();
+        const result = [];
+
+        // Sort time entries by most recent first
+        const sorted = [...this.plannerData.timeEntries].sort((a, b) => {
+            return (b.endTime || b.startTime || 0) - (a.endTime || a.startTime || 0);
+        });
+
+        for (const entry of sorted) {
+            if (!entry.taskId || seen.has(entry.taskId)) continue;
+            seen.add(entry.taskId);
+            result.push({
+                taskId: entry.taskId,
+                taskText: entry.taskText || entry.task || 'Untitled Task',
+                project: entry.project || '',
+                task: { text: entry.taskText || entry.task || 'Untitled Task', project: entry.project || '' }
+            });
+            if (result.length >= n) break;
+        }
+
+        return result;
+    }
+
+    /**
+     * Lightweight timer text update — called every second instead of full DOM rebuilds.
+     * Only updates the text content of the active timer's elements.
+     */
+    updateTimerDisplays() {
+        if (!this.activeTimer) return;
+
+        const elapsed = this.getActiveTimerElapsed();
+        const taskId = this.activeTimer.taskId;
+
+        // Update task list timer text (if visible in sidebar)
+        const timerBtn = document.querySelector(`.timer-btn[data-task-id="${taskId}"]`);
+        if (timerBtn) {
+            const timeSpan = timerBtn.parentElement.querySelector('.task-time');
+            if (timeSpan) {
+                const baseTime = this.getTaskTime(taskId);
+                timeSpan.textContent = this.formatTime(baseTime + elapsed);
+            }
+        }
+
+        // Update active timer card elapsed time
+        if (this._activeTimerElapsedEl) {
+            this._activeTimerElapsedEl.textContent = this.formatTime((this._activeTimerBaseTime || 0) + elapsed);
+        }
     }
 
     setupEditTimeEntry() {
@@ -687,6 +791,7 @@ class Planner {
             await this.loadVaultFromTauri();
             this.renderProjects();
             this.renderTasks();
+            this.renderActiveTimerDisplay();
             this.updateSummaryStats();
             console.log(`Vault reloaded: ${this.projects.length} projects, ${this.tasks.length} tasks`);
         } catch (e) {
@@ -744,6 +849,74 @@ class Planner {
         } else {
             // Fallback to localStorage for web
             localStorage.setItem('plannerData', JSON.stringify(this.plannerData));
+        }
+    }
+
+    /**
+     * Archive time entries older than 90 days to yearly files.
+     * Keeps plannerData.timeEntries lean, preserves old data in
+     * time_archive_YYYY.json files in the app data dir.
+     */
+    async archiveOldTimeEntries() {
+        if (!window.__TAURI__) return;
+
+        const ninetyDaysAgo = new Date();
+        ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+        ninetyDaysAgo.setHours(0, 0, 0, 0);
+        const cutoff = ninetyDaysAgo.getTime();
+
+        // Split entries into recent and old
+        const recent = [];
+        const oldByYear = {};
+
+        for (const entry of this.plannerData.timeEntries) {
+            const entryTime = entry.endTime || entry.startTime || 0;
+            if (entryTime < cutoff) {
+                const year = new Date(entryTime).getFullYear();
+                if (!oldByYear[year]) oldByYear[year] = [];
+                oldByYear[year].push(entry);
+            } else {
+                recent.push(entry);
+            }
+        }
+
+        const yearsToArchive = Object.keys(oldByYear);
+        if (yearsToArchive.length === 0) return; // Nothing to archive
+
+        const { invoke } = window.__TAURI__.tauri;
+
+        try {
+            // Append old entries to yearly archive files
+            for (const year of yearsToArchive) {
+                const filename = `time_archive_${year}.json`;
+                let existing = [];
+
+                // Load existing archive for this year
+                const data = await invoke('load_app_file', { filename });
+                if (data) {
+                    try {
+                        existing = JSON.parse(data);
+                    } catch (e) {
+                        console.warn(`Failed to parse ${filename}:`, e);
+                    }
+                }
+
+                // Merge and save
+                const merged = [...existing, ...oldByYear[year]];
+                await invoke('save_app_file', {
+                    filename,
+                    data: JSON.stringify(merged)
+                });
+            }
+
+            // Update main planner data with only recent entries
+            const archivedCount = this.plannerData.timeEntries.length - recent.length;
+            this.plannerData.timeEntries = recent;
+            await this.savePlannerData();
+
+            console.log(`Archived ${archivedCount} time entries to ${yearsToArchive.map(y => `time_archive_${y}.json`).join(', ')}`);
+        } catch (e) {
+            console.error('Failed to archive time entries:', e);
         }
     }
 
@@ -962,10 +1135,9 @@ class Planner {
         this.plannerData.activeTimer = this.activeTimer;
         this.savePlannerData();
 
-        // Update display every second
+        // Update display every second — lightweight text-only updates
         this.activeTimerInterval = setInterval(() => {
-            this.renderTasks();
-            this.renderActiveTimerDisplay();
+            this.updateTimerDisplays();
         }, 1000);
     }
 
@@ -1037,15 +1209,26 @@ class Planner {
         const container = document.getElementById('timeLog');
         const today = new Date().toISOString().split('T')[0];
 
-        // Sort entries by time descending
-        const sortedEntries = [...this.plannerData.timeEntries].sort((a, b) => {
-            const timeA = a.endTime || a.startTime;
-            const timeB = b.endTime || b.startTime;
-            return timeB - timeA;
-        });
+        // Only show entries from the last 15 days in the sidebar
+        const fifteenDaysAgo = new Date();
+        fifteenDaysAgo.setDate(fifteenDaysAgo.getDate() - 15);
+        fifteenDaysAgo.setHours(0, 0, 0, 0);
+        const cutoffTime = fifteenDaysAgo.getTime();
+
+        // Sort entries by time descending, filter to recent 15 days
+        const sortedEntries = [...this.plannerData.timeEntries]
+            .filter(e => {
+                const entryTime = e.endTime || e.startTime || 0;
+                return entryTime >= cutoffTime;
+            })
+            .sort((a, b) => {
+                const timeA = a.endTime || a.startTime;
+                const timeB = b.endTime || b.startTime;
+                return timeB - timeA;
+            });
 
         if (sortedEntries.length === 0) {
-            container.innerHTML = '<p class="empty-message">No time entries</p>';
+            container.innerHTML = '<p class="empty-message">No time entries in last 15 days</p>';
             document.querySelector('#totalTime span').textContent = '00:00:00';
             return;
         }

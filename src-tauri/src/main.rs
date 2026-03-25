@@ -145,18 +145,22 @@ fn start_watching(app_handle: tauri::AppHandle, vault_path: String, state: &taur
         // Spawn a thread to handle file change events with debouncing
         let app_handle_clone = app_handle.clone();
         std::thread::spawn(move || {
-            let mut last_event_time = std::time::Instant::now();
-            
             loop {
-                if let Ok(_) = rx.recv_timeout(Duration::from_millis(100)) {
-                    last_event_time = std::time::Instant::now();
+                // Block until we receive the first file change event
+                if rx.recv().is_err() {
+                    break; // Channel closed, watcher dropped
                 }
                 
-                // Debounce: only emit event if 500ms have passed since last change
-                if last_event_time.elapsed() >= Duration::from_millis(500) 
-                    && last_event_time.elapsed() < Duration::from_millis(600) {
-                    let _ = app_handle_clone.emit_all("vault-changed", ());
+                // Debounce: drain any further events for 500ms
+                loop {
+                    match rx.recv_timeout(Duration::from_millis(500)) {
+                        Ok(_) => continue, // More events arriving, keep draining
+                        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => break, // Quiet period, emit
+                        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return,
+                    }
                 }
+                
+                let _ = app_handle_clone.emit_all("vault-changed", ());
             }
         });
     }
@@ -194,6 +198,39 @@ fn load_planner_data(app_handle: tauri::AppHandle) -> Result<Option<String>, Str
     if planner_file.exists() {
         let content = fs::read_to_string(&planner_file)
             .map_err(|e| format!("Failed to read planner data: {}", e))?;
+        Ok(Some(content))
+    } else {
+        Ok(None)
+    }
+}
+
+#[tauri::command]
+fn save_app_file(app_handle: tauri::AppHandle, filename: String, data: String) -> Result<(), String> {
+    let app_dir = app_handle
+        .path_resolver()
+        .app_data_dir()
+        .ok_or("Could not get app data directory")?;
+    
+    fs::create_dir_all(&app_dir).map_err(|e| format!("Failed to create app dir: {}", e))?;
+    
+    let file_path = app_dir.join(&filename);
+    fs::write(&file_path, data).map_err(|e| format!("Failed to save {}: {}", filename, e))?;
+    
+    Ok(())
+}
+
+#[tauri::command]
+fn load_app_file(app_handle: tauri::AppHandle, filename: String) -> Result<Option<String>, String> {
+    let app_dir = app_handle
+        .path_resolver()
+        .app_data_dir()
+        .ok_or("Could not get app data directory")?;
+    
+    let file_path = app_dir.join(&filename);
+    
+    if file_path.exists() {
+        let content = fs::read_to_string(&file_path)
+            .map_err(|e| format!("Failed to read {}: {}", filename, e))?;
         Ok(Some(content))
     } else {
         Ok(None)
@@ -243,6 +280,8 @@ fn main() {
             get_stored_vault_path,
             save_planner_data,
             load_planner_data,
+            save_app_file,
+            load_app_file,
             start_watching_vault,
             fetch_ical_url
         ])

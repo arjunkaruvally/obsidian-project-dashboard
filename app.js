@@ -28,6 +28,7 @@ class VaultAnalyzer {
 
                     // Save to localStorage
                     this.saveToLocalStorage();
+                    localStorage.setItem('vaultPath', vaultPath); // Persist for planner
                     this.currentVaultPath = vaultPath;
                 }
             } else {
