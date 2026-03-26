@@ -160,8 +160,9 @@ class Planner {
             this.activeTimerInterval = setInterval(() => {
                 this.updateTimerDisplays();
             }, 1000);
-            this.renderActiveTimerDisplay();
         }
+        // Always render the display to show recent timers even if no active timer
+        this.renderActiveTimerDisplay();
     }
 
     setupTimerSearchCard() {
@@ -343,7 +344,7 @@ class Planner {
                 taskId: entry.taskId,
                 taskText: entry.taskText || entry.task || 'Untitled Task',
                 project: entry.project || '',
-                task: { text: entry.taskText || entry.task || 'Untitled Task', project: entry.project || '' }
+                task: { text: entry.taskText || entry.task || 'Untitled Task', project: entry.project || '', projectType: entry.projectType || 'project' }
             });
             if (result.length >= n) break;
         }
@@ -383,6 +384,7 @@ class Planner {
         const cancelBtn = document.getElementById('editTimeCancel');
         const saveBtn = document.getElementById('editTimeSave');
         const taskInput = document.getElementById('editTimeTask');
+        const typeSelect = document.getElementById('editTimeType');
         const hoursInput = document.getElementById('editTimeHours');
         const minsInput = document.getElementById('editTimeMinutes');
         const secsInput = document.getElementById('editTimeSeconds');
@@ -474,6 +476,7 @@ class Planner {
             const entry = this.plannerData.timeEntries[this.editEntryIndex];
             if (entry) {
                 entry.taskText = taskText;
+                entry.projectType = typeSelect.value || 'project';
 
                 // Handle time range changes
                 let newStart, newEnd;
@@ -546,10 +549,12 @@ class Planner {
         const startInput = document.getElementById('editTimeStart');
         const endInput = document.getElementById('editTimeEnd');
         const dateInput = document.getElementById('editTimeDate');
+        const typeSelect = document.getElementById('editTimeType');
 
         // Populate fields
         taskInput.value = entry.taskText || entry.task || '';
         dateInput.value = entry.date || ''; // YYYY-MM-DD
+        typeSelect.value = entry.projectType || 'project';
 
         // Populate times if available
         if (entry.startTime) {
@@ -642,7 +647,7 @@ class Planner {
             if (frontmatterMatch) {
                 try {
                     const properties = jsyaml.load(frontmatterMatch[1]) || {};
-                    if (properties.type === 'project') {
+                    if (properties.type === 'project' || properties.type === 'control') {
                         project.properties = properties;
                     }
                 } catch (e) {
@@ -669,6 +674,12 @@ class Planner {
                 }
             }
         }
+
+        // Propagate projectType to all tasks in this project
+        const projectType = project.properties?.type || 'project';
+        project.experiments.forEach(exp => {
+            exp.tasks.forEach(task => { task.projectType = projectType; });
+        });
 
         this.projects.push(project);
     }
@@ -703,6 +714,7 @@ class Planner {
                 experiment: experiment.name,
                 experimentStatus: experiment.properties.status || 'unknown',
                 project: projectName,
+                projectType: null, // Set after project parsing
                 deadline: null,
                 daysUntilDeadline: null,
                 urgency: 'none',
@@ -1177,6 +1189,7 @@ class Planner {
             taskId: this.activeTimer.taskId,
             taskText: this.activeTimer.task.text,
             project: this.activeTimer.task.project,
+            projectType: this.activeTimer.task.projectType || 'project',
             startTime: this.activeTimer.startTime,
             endTime: Date.now(),
             duration: duration,
@@ -1431,12 +1444,13 @@ class Planner {
             const endTime = new Date(entry.endTime);
 
             const taskTitle = entry.taskText || entry.task || 'Untitled Task';
+            const isControl = entry.projectType === 'control';
             return {
                 id: `tracked-${index}`,
                 title: `✓ ${taskTitle.substring(0, 20)}...`,
                 start: startTime.toISOString(),
                 end: endTime.toISOString(),
-                className: 'tracked-event',
+                className: isControl ? 'tracked-event tracked-control' : 'tracked-event',
                 editable: false,
                 extendedProps: {
                     eventType: 'tracked',

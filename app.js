@@ -146,6 +146,9 @@ class VaultAnalyzer {
             }
         }
 
+        // Skip control-type entries from dashboard (habit tracking only in Planner)
+        if (project.properties?.type === 'control') return;
+
         if (!experimentsFolder) {
             this.projects.push(project);
             return;
@@ -209,6 +212,9 @@ class VaultAnalyzer {
                 }
             }
         }
+
+        // Skip control-type entries from dashboard (habit tracking only in Planner)
+        if (project.properties?.type === 'control') return;
 
         if (!experimentsFolder) {
             // Still add project even without experiments folder if it has project metadata

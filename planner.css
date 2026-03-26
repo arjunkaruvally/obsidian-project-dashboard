@@ -655,6 +655,12 @@
     font-style: italic;
 }
 
+/* Tracked Events for Control Habits — Red */
+.fc-event.tracked-control {
+    background-color: rgba(239, 68, 68, 0.5) !important;
+    border: 2px dashed rgba(239, 68, 68, 0.8) !important;
+}
+
 /* Modal Delete Button */
 .modal-delete-btn {
     background: rgba(239, 68, 68, 0.2);
