@@ -156,6 +156,19 @@ class Planner {
     restoreActiveTimer() {
         if (this.plannerData.activeTimer) {
             this.activeTimer = this.plannerData.activeTimer;
+            
+            // If restoring from persistent cache, hot-swap the dummy task object with the 
+            // richly parsed object from the vault so that targets and deadlines apply correctly.
+            if (this.activeTimer && this.activeTimer.taskId && this.activeTimer.task && !this.activeTimer.task.target) {
+                let fullTask = this.tasks.find(t => {
+                    const generatedId = `${t.project}-${t.experiment}-${t.text.substring(0, 10).replace(/\s+/g, '')}`;
+                    return generatedId === this.activeTimer.taskId;
+                });
+                if (fullTask) {
+                    this.activeTimer.task = fullTask;
+                }
+            }
+
             // Restart interval — only update timer text, not full DOM
             this.activeTimerInterval = setInterval(() => {
                 this.updateTimerDisplays();
@@ -285,13 +298,28 @@ class Planner {
             const isActive = this.activeTimer?.taskId === item.taskId;
             const elapsed = isActive ? this.getActiveTimerElapsed() : 0;
             const totalTime = this.getTaskTime(item.taskId);
+            
+            let displayTaskText = item.taskText;
+            let targetDisplay = '';
+            
+            if (item.task && item.task.target) {
+                displayTaskText = item.task.text;
+                targetDisplay = `<div style="margin-top: 2px"><span class="task-target">target: ${item.task.target.originalText}</span></div>`;
+            } else if (displayTaskText.includes('@target')) {
+                const match = displayTaskText.match(/@target\(([^)]+)\)/);
+                if (match) {
+                    targetDisplay = `<div style="margin-top: 2px"><span class="task-target">target: ${match[1]}</span></div>`;
+                    displayTaskText = displayTaskText.replace(/@target\([^)]+\)/, '').trim();
+                }
+            }
 
             const div = document.createElement('div');
             div.className = `recent-timer-item${isActive ? ' active' : ''}`;
             div.dataset.taskId = item.taskId;
             div.innerHTML = `
                 <div class="active-timer-info">
-                    <div class="active-timer-task" title="${item.taskText}">${item.taskText}</div>
+                    <div class="active-timer-task" title="${displayTaskText}">${displayTaskText}</div>
+                    ${targetDisplay}
                     <div class="active-timer-project">${item.project}</div>
                 </div>
                 <span class="active-timer-elapsed">${isActive ? this.formatTime(totalTime + elapsed) : this.formatTime(totalTime)}</span>
@@ -340,11 +368,24 @@ class Planner {
         for (const entry of sorted) {
             if (!entry.taskId || seen.has(entry.taskId)) continue;
             seen.add(entry.taskId);
+            
+            const taskText = entry.taskText || entry.task || 'Untitled Task';
+            const project = entry.project || '';
+            
+            // Look up the fully parsed task securely using the ID formulation
+            // since historical taskText might still contain suffixes like @target or @due
+            let fullTask = this.tasks.find(t => {
+                const generatedId = `${t.project}-${t.experiment}-${t.text.substring(0, 10).replace(/\s+/g, '')}`;
+                return generatedId === entry.taskId;
+            });
+            
+            console.log(`[Recent Timers Lookup] Looking for ID: ${entry.taskId}. Found fullTask? ${!!fullTask}`);
+            
             result.push({
                 taskId: entry.taskId,
-                taskText: entry.taskText || entry.task || 'Untitled Task',
-                project: entry.project || '',
-                task: { text: entry.taskText || entry.task || 'Untitled Task', project: entry.project || '', projectType: entry.projectType || 'project' }
+                taskText: taskText,
+                project: project,
+                task: fullTask || { text: taskText, project: project, projectType: entry.projectType || 'project' }
             });
             if (result.length >= n) break;
         }
@@ -376,6 +417,174 @@ class Planner {
         if (this._activeTimerElapsedEl) {
             this._activeTimerElapsedEl.textContent = this.formatTime((this._activeTimerBaseTime || 0) + elapsed);
         }
+
+        // Check against habit target limits
+        this.checkTargetLimit(elapsed);
+    }
+
+    checkTargetLimit(elapsed) {
+        if (!this.activeTimer) {
+            return; // no timer running
+        }
+        if (!this.activeTimer.task.target) {
+            console.log("[Target Debug] Timer is running, but task has no .target property! Task object:", this.activeTimer.task);
+            return;
+        }
+        
+        const target = this.activeTimer.task.target;
+        const taskId = this.activeTimer.taskId;
+        
+        // Calculate total time tracked in this period
+        const now = new Date();
+        let periodStart = new Date(0); // Default all-time
+        
+        if (target.period === 'day') {
+            periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        } else if (target.period === 'week') {
+            const day = now.getDay();
+            const diff = now.getDate() - day + (day === 0 ? -6 : 1); // Adjust for Monday start
+            periodStart = new Date(now.getFullYear(), now.getMonth(), diff);
+            periodStart.setHours(0, 0, 0, 0);
+        } else if (target.period === 'month') {
+            periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        }
+        
+        // Filter past time entries for this task within the period
+        const pastTimeInPeriod = this.plannerData.timeEntries
+            .filter(e => e.taskId === taskId && new Date(e.startTime) >= periodStart)
+            .reduce((sum, e) => sum + (e.duration || 0), 0);
+            
+        const totalTime = pastTimeInPeriod + elapsed;
+        
+        console.log(`[Target Check] Task: "${this.activeTimer.task.text}" | Past Time: ${pastTimeInPeriod}s | Elapsed: ${elapsed}s | Total: ${totalTime}s | Limit: ${target.limitSeconds}s | Period: ${target.period}`);
+        
+        if (totalTime > target.limitSeconds) {
+            console.log(`[Target Alert!!] Total time (${totalTime}s) > Limit (${target.limitSeconds}s)! Checking 60s cooldown...`);
+            
+            // Check if we already notified in the last 60 seconds
+            if (!this.lastTargetNotification || (Date.now() - this.lastTargetNotification > 60000)) {
+                console.log(`[Target Alert!!] Cooldown passed! Firing triggerTargetAlert now.`);
+                this.lastTargetNotification = Date.now();
+                this.triggerTargetAlert(this.activeTimer.task.text, target.originalText);
+            } else {
+                console.log(`[Target Alert] Skipped - in 60s cooldown (${Math.floor((Date.now() - this.lastTargetNotification)/1000)}s passed)`);
+            }
+        } else {
+            // Reset if we drop below target (e.g., edited entries)
+            if (this.lastTargetNotification) {
+                this.lastTargetNotification = 0;
+                document.body.classList.remove('target-limit-breached');
+            }
+        }
+    }
+
+    async triggerTargetAlert(taskName, targetText) {
+        let tauriSuccess = false;
+        console.log("[Notification System] Attempting native Tauri notification...");
+        
+        // Show native notification if possible (using Tauri API)
+        if (window.__TAURI__ && window.__TAURI__.notification) {
+            const { isPermissionGranted, requestPermission, sendNotification } = window.__TAURI__.notification;
+            try {
+                let permissionGranted = await isPermissionGranted();
+                console.log("[Notification System] Tauri Permission Status:", permissionGranted);
+                if (!permissionGranted) {
+                    console.log("[Notification System] Requesting Tauri Permission...");
+                    const permission = await requestPermission();
+                    console.log("[Notification System] Permission Result:", permission);
+                    permissionGranted = permission === 'granted';
+                }
+                
+                if (permissionGranted) {
+                    console.log("[Notification System] Sending Tauri Native notification...");
+                    sendNotification({
+                        title: 'Target Limit Exceeded!',
+                        body: `Habit "${taskName}" has exceeded its target of ${targetText}!`,
+                        icon: 'warning', // basic fallback icon name for some OS
+                        sound: 'default'
+                    });
+                    
+                    // Force window to front
+                    if (window.__TAURI__ && window.__TAURI__.window) {
+                        const { appWindow } = window.__TAURI__.window;
+                        try {
+                            appWindow.unminimize();
+                            appWindow.setFocus();
+                        } catch(err) {
+                            console.warn("Could not focus window", err);
+                        }
+                    }
+
+                    tauriSuccess = true;
+                    console.log("[Notification System] Tauri Native Notification successfully queued.");
+                } else {
+                    console.log("[Notification System] Tauri permission denied by OS.");
+                }
+            } catch (e) {
+                console.warn('[Notification System] Tauri notification error (Did you restart dev server?):', e);
+            }
+        } else {
+            console.log("[Notification System] Tauri global not found or notification API missing. Skipping to fallback.");
+        }
+        
+        // Fallback for web view or if Tauri failed above
+        if (!tauriSuccess && "Notification" in window) {
+            console.log("[Notification System] Falling back to traditional web HTML Notification...", Notification.permission);
+            if (Notification.permission === "granted") {
+                new Notification("Target Limit Exceeded!", {
+                    body: `Habit "${taskName}" has exceeded its target of ${targetText}!`,
+                    icon: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚠️</text></svg>"
+                });
+                console.log("[Notification System] Triggered web notification constructor.");
+            } else if (Notification.permission !== "denied") {
+                console.log("[Notification System] Web Notification permission not granted/denied. Requesting...");
+                Notification.requestPermission();
+            } else {
+                console.log("[Notification System] Web notifications fully denied.");
+            }
+        }
+        
+        // Play an interrupting beep using pre-initialized AudioContext
+        console.log("[Audio System] Attempting to synthesize 600ms square wave alarm beep...");
+        try {
+            const ctx = this.alertAudioCtx;
+            if (ctx) {
+                console.log("[Audio System] Pre-initialized context found. State =", ctx.state);
+            } else {
+                console.log("[Audio System] CRITICAL: No initial AudioContext found!");
+            }
+            
+            if (ctx && ctx.state !== 'suspended') {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(800, ctx.currentTime);
+                osc.frequency.setValueAtTime(1200, ctx.currentTime + 0.1);
+                osc.frequency.setValueAtTime(800, ctx.currentTime + 0.2);
+                osc.frequency.setValueAtTime(1200, ctx.currentTime + 0.3);
+                
+                gain.gain.setValueAtTime(0, ctx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.05);
+                gain.gain.setValueAtTime(0.3, ctx.currentTime + 0.35);
+                gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.4);
+                
+                osc.start(ctx.currentTime);
+                osc.stop(ctx.currentTime + 0.4);
+                
+                console.log("[Audio System] Square wave correctly sequenced to destination.");
+            } else {
+                console.log("[Audio System] Alarm muted! Context is suspended or missing.");
+            }
+        } catch (e) {
+            console.warn('[Audio System] CRASH: AudioContext not supported for target beep', e);
+        }
+        
+        // Flash screen red
+        document.body.classList.add('target-limit-breached');
     }
 
     setupEditTimeEntry() {
@@ -718,6 +927,7 @@ class Planner {
                 deadline: null,
                 daysUntilDeadline: null,
                 urgency: 'none',
+                target: null,
                 doneDate: null,
                 startedDate: null
             };
@@ -757,6 +967,40 @@ class Planner {
             if (emojiStartedMatch) {
                 task.startedDate = emojiStartedMatch[1];
                 cleanText = cleanText.replace(/🛫\s+\d{4}-\d{2}-\d{2}/, '').trim();
+            }
+
+            // Extract target from @target(duration / period)
+            const targetMatch = cleanText.match(/@target\(([^)]+)\)/);
+            if (targetMatch) {
+                const targetStr = targetMatch[1]; // e.g., "1 min / 1 day"
+                const parts = targetStr.split('/').map(p => p.trim());
+                if (parts.length === 2) {
+                    const durationStr = parts[0];
+                    const periodStr = parts[1];
+                    
+                    let limitSeconds = 0;
+                    if (durationStr.includes('hr') || durationStr.includes('hour')) {
+                        limitSeconds = parseFloat(durationStr) * 3600;
+                    } else if (durationStr.includes('min')) {
+                        limitSeconds = parseFloat(durationStr) * 60;
+                    } else if (durationStr.includes('sec')) {
+                        limitSeconds = parseFloat(durationStr);
+                    }
+                    
+                    let period = 'none';
+                    if (periodStr.includes('week')) period = 'week';
+                    else if (periodStr.includes('day')) period = 'day';
+                    else if (periodStr.includes('month')) period = 'month';
+                    
+                    if (limitSeconds > 0 && period !== 'none') {
+                        task.target = {
+                            originalText: targetStr,
+                            limitSeconds,
+                            period
+                        };
+                    }
+                }
+                cleanText = cleanText.replace(/@target\([^)]+\)/, '').trim();
             }
 
             task.text = cleanText;
@@ -1074,13 +1318,21 @@ class Planner {
                 dueDisplay = `<span class="task-due ${dueClass}">${dueText}</span>`;
             }
 
+            let targetDisplay = '';
+            if (task.target) {
+                targetDisplay = `<span class="task-target">target: ${task.target.originalText}</span>`;
+            }
+
             const div = document.createElement('div');
             div.className = `task-item${task.completed ? ' completed' : ''}`;
             div.innerHTML = `
                 <div class="task-checkbox${task.completed ? ' checked' : ''}"></div>
                 <div class="task-content">
                     <span class="task-text" title="${task.text}">${task.text}</span>
-                    ${dueDisplay}
+                    <div class="task-meta-row">
+                        ${targetDisplay}
+                        ${dueDisplay}
+                    </div>
                 </div>
                 <div class="task-timer">
                     <span class="task-time">${this.formatTime(timeEntry + (isActive ? this.getActiveTimerElapsed() : 0))}</span>
@@ -1146,6 +1398,19 @@ class Planner {
         // Persist active timer
         this.plannerData.activeTimer = this.activeTimer;
         this.savePlannerData();
+        
+        // Pre-initialize audio context during synchronous user click to bypass auto-play restrictions
+        try {
+            if (!this.alertAudioCtx) {
+                this.alertAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            // Resume it if it was suspended
+            if (this.alertAudioCtx.state === 'suspended') {
+                this.alertAudioCtx.resume();
+            }
+        } catch (e) {
+            console.warn('Could not initialize AudioContext on click', e);
+        }
 
         // Update display every second — lightweight text-only updates
         this.activeTimerInterval = setInterval(() => {
@@ -1181,6 +1446,7 @@ class Planner {
         if (!this.activeTimer) return;
 
         clearInterval(this.activeTimerInterval);
+        document.body.classList.remove('target-limit-breached');
 
         const duration = Math.floor((Date.now() - this.activeTimer.startTime) / 1000);
 
@@ -1261,7 +1527,25 @@ class Planner {
 
             // Find the actual index in the full timeEntries array
             const entryIndex = this.plannerData.timeEntries.indexOf(entry);
-            const taskText = entry.taskText || entry.task || 'Untitled Task';
+            let taskText = entry.taskText || entry.task || 'Untitled Task';
+            let targetDisplay = '';
+            
+            // Clean up target text optionally if present
+            let loadedTask = this.tasks.find(t => {
+                const generatedId = `${t.project}-${t.experiment}-${t.text.substring(0, 10).replace(/\s+/g, '')}`;
+                return generatedId === entry.taskId;
+            });
+            
+            if (loadedTask && loadedTask.target) {
+                taskText = loadedTask.text;
+                targetDisplay = `<span class="task-target" style="margin-left: 6px">target: ${loadedTask.target.originalText}</span>`;
+            } else if (taskText.includes('@target')) {
+                const match = taskText.match(/@target\(([^)]+)\)/);
+                if (match) {
+                    targetDisplay = `<span class="task-target" style="margin-left: 6px">target: ${match[1]}</span>`;
+                    taskText = taskText.replace(/@target\([^)]+\)/, '').trim();
+                }
+            }
 
             let timeRange = '';
             if (entry.startTime && entry.endTime) {
@@ -1274,7 +1558,10 @@ class Planner {
             div.className = 'time-entry';
             div.innerHTML = `
                 <div class="time-entry-details">
-                    <span class="time-entry-task" title="${taskText}">${taskText}</span>
+                    <div>
+                        <span class="time-entry-task" title="${taskText}">${taskText}</span>
+                        ${targetDisplay}
+                    </div>
                     ${timeRange}
                 </div>
                 <span class="time-entry-duration">${this.formatTime(entry.duration)}</span>
@@ -1443,7 +1730,20 @@ class Planner {
             const startTime = new Date(entry.startTime);
             const endTime = new Date(entry.endTime);
 
-            const taskTitle = entry.taskText || entry.task || 'Untitled Task';
+            let taskTitle = entry.taskText || entry.task || 'Untitled Task';
+            
+            // Clean up target text optionally if present
+            let loadedTask = this.tasks.find(t => {
+                const generatedId = `${t.project}-${t.experiment}-${t.text.substring(0, 10).replace(/\s+/g, '')}`;
+                return generatedId === entry.taskId;
+            });
+            
+            if (loadedTask && loadedTask.target) {
+                taskTitle = loadedTask.text;
+            } else if (taskTitle.includes('@target')) {
+                taskTitle = taskTitle.replace(/@target\([^)]+\)/, '').trim();
+            }
+
             const isControl = entry.projectType === 'control';
             return {
                 id: `tracked-${index}`,

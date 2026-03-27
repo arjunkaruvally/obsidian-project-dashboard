@@ -1,0 +1,127 @@
+/* Report Tab Specific Styling */
+
+.report-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.period-selector-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    background: var(--bg-secondary);
+    padding: 0.75rem 1.25rem;
+    border-radius: 0.75rem;
+    border: 1px solid var(--border-color);
+}
+
+.period-selector-wrapper label {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.period-select {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    padding: 0.5rem 2rem 0.5rem 1rem;
+    border-radius: 0.5rem;
+    font-family: 'Inter', sans-serif;
+    font-size: 0.9rem;
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 0.7rem center;
+    background-size: 1em;
+}
+
+.period-select:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+
+.section-divider {
+    border: 0;
+    height: 1px;
+    background: var(--border-color);
+    margin: 2.5rem 0 1.5rem 0;
+}
+
+.dashboard h2 {
+    font-size: 1.25rem;
+    color: var(--text-primary);
+    margin-bottom: 1rem;
+    margin-top: 0;
+}
+
+.charts-grid.single-wide {
+    grid-template-columns: 1fr;
+    margin-top: 1.5rem;
+}
+
+@media (max-width: 768px) {
+    .charts-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Completed Tasks Duration List */
+.tasks-duration-list {
+    margin-top: 1rem;
+    max-height: 300px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding-right: 0.5rem;
+}
+
+.tasks-duration-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+.tasks-duration-list::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 4px;
+}
+
+.tasks-duration-list::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+
+.task-duration-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    background: rgba(30, 41, 59, 0.5);
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.task-duration-item .task-name {
+    font-size: 0.95rem;
+    color: #e2e8f0;
+    font-weight: 500;
+}
+
+.task-duration-item .task-project {
+    font-size: 0.8rem;
+    color: #94a3b8;
+    margin-top: 0.2rem;
+}
+
+.task-duration-item .task-time {
+    font-family: monospace;
+    font-size: 1rem;
+    color: #38bdf8;
+    background: rgba(56, 189, 248, 0.1);
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+}

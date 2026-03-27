@@ -271,6 +271,22 @@
     margin-top: 1px;
 }
 
+.task-meta-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-top: 2px;
+}
+
+.task-target {
+    font-size: 0.7rem;
+    color: var(--accent-primary);
+    background: rgba(99, 102, 241, 0.1);
+    padding: 2px 4px;
+    border-radius: 4px;
+}
+
 .task-due-future {
     color: var(--text-secondary);
 }
@@ -1138,4 +1154,25 @@
 .task-search-results::-webkit-scrollbar-thumb {
     background: var(--accent-primary);
     border-radius: 3px;
+}
+
+/* -------------------------------------
+   Target Limit Breach Animations
+------------------------------------- */
+
+body.target-limit-breached {
+    background-color: #ef4444 !important;
+    transition: background-color 0.3s ease;
+}
+
+body.target-limit-breached .nav-bar,
+body.target-limit-breached .planner-sidebar,
+body.target-limit-breached .main-content {
+    background-color: rgba(239, 68, 68, 0.2) !important;
+    transition: background-color 0.3s ease;
+}
+
+body.target-limit-breached .recent-timer-item.active {
+    background: #dc2626 !important;
+    border-color: #b91c1c !important;
 }

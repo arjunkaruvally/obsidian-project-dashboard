@@ -26,6 +26,12 @@
                 "scope": [
                     "**"
                 ]
+            },
+            "notification": {
+                "all": true
+            },
+            "window": {
+                "all": true
             }
         },
         "bundle": {

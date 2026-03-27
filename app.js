@@ -316,6 +316,25 @@ class VaultAnalyzer {
                 cleanText = cleanText.replace(/🛫\s+\d{4}-\d{2}-\d{2}/, '').trim();
             }
 
+            // Extract target limits: @target(5 hr / 1 week)
+            const targetMatch = cleanText.match(/@target\(([^/]+)\s*\/\s*([^)]+)\)/);
+            if (targetMatch) {
+                const amountStr = targetMatch[1].trim();
+                const periodStr = targetMatch[2].trim();
+                
+                let limitSeconds = 0;
+                if (amountStr.includes('hr') || amountStr.includes('hour')) limitSeconds = parseFloat(amountStr) * 3600;
+                else if (amountStr.includes('min')) limitSeconds = parseFloat(amountStr) * 60;
+                else if (amountStr.includes('sec')) limitSeconds = parseFloat(amountStr);
+                
+                let period = 'day';
+                if (periodStr.includes('week')) period = 'week';
+                else if (periodStr.includes('month')) period = 'month';
+                
+                task.target = { limitSeconds, period };
+                cleanText = cleanText.replace(/@target\([^)]+\)/, '').trim();
+            }
+
             task.text = cleanText;
 
             // Calculate days until deadline and urgency
